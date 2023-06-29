@@ -137,3 +137,4 @@ dmypy.json
 */unit_test/
 */.aws
 hold_tests/
+.aws/
