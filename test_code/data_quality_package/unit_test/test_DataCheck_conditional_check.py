@@ -4,7 +4,8 @@ import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as f
 from pyspark.sql.types import StringType, DateType, IntegerType, FloatType, DoubleType
-from test_code.data_quality_package.dq_utility import DataCheck
+from ..dq_utility import DataCheck
+
 
 # Create SparkSession
 spark = SparkSession.builder.master("local").appName("DataCheckTest").getOrCreate()
@@ -20,6 +21,7 @@ def datacheck_instance():
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)
     return data_check
+
 
 # Test conditional_check function
 def test_conditional_check(datacheck_instance):

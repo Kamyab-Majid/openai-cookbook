@@ -1,7 +1,7 @@
 document: true
 unit_test: true
 conversion: false
-conversion_target: 
+conversion_target:
   python: py
   scala: scala
   c++: cpp

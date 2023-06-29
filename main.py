@@ -47,7 +47,7 @@ class CodeToolbox:
 
     # Other methods and attributes here
 
-    def chat_gpt_wrapper(self, input_messages: List = [], fail_rerun: int = 2) -> Tuple[Any, List]:
+    def chat_gpt_wrapper(self, input_messages: List = None, fail_rerun: int = 2) -> Tuple[Any, List]:
         """
         Outputs a unit test for a given Python function, using a 3-step GPT-3 prompt.
 
@@ -59,6 +59,8 @@ class CodeToolbox:
             Tuple[Any, List]: A tuple containing the generated unit test code and the updated input messages list.
         """
 
+        if input_messages is None:
+            input_messages = []
         # the init function for this class is
         # {init_str}
 
@@ -108,7 +110,7 @@ class CodeToolbox:
         for key, value in dictionary.items():
             if isinstance(value, dict):
                 nested_keys = self.get_lowest_level_keys(value)
-                keys.update(nested_keys)
+                keys |= nested_keys
             else:
                 keys[key] = value
         return keys
@@ -126,10 +128,10 @@ class CodeToolbox:
         start_marker = f"```{language}"
         end_marker = "```"
         pattern = re.compile(f"{start_marker}(.*?)({end_marker})", re.DOTALL)
-        matches = pattern.findall(string)
-        if not matches:
+        if matches := pattern.findall(string):
+            return "\n".join([match[0].strip() for match in matches])
+        else:
             return None
-        return "\n".join([match[0].strip() for match in matches])
         
     def convert_keys_to_str(self, dictionary: Dict[Any, Any]) -> Dict[str, Any]:
         """
@@ -229,11 +231,14 @@ class CodeToolbox:
             code to be used in {self.config['doc_package']},\
             provide the typing imports in different code snippet, as an example for this request\
         {self.config['doc_example']}"
-        self.doc_messages = []
-        self.doc_messages.append({"role": "system", "content": doc_prompt})
-        class_part = 'in' + self.class_name+'class' if class_name else ''
-        self.doc_messages.append(
-            {"role": "user", "content": f"provide {self.config['doc_package']} docstring documentation and typehints for {func_str} {class_part}, do not provide any other imports that are not used in typing and do not provide multiple options, just one code, if it is a method in a class, do not provide any other code but the method itself and imports"})
+        class_part = f'in{self.class_name}class' if class_name else ''
+        self.doc_messages = [
+            {"role": "system", "content": doc_prompt},
+            {
+                "role": "user",
+                "content": f"provide {self.config['doc_package']} docstring documentation and typehints for {func_str} {class_part}, do not provide any other imports that are not used in typing and do not provide multiple options, just one code, if it is a method in a class, do not provide any other code but the method itself and imports",
+            },
+        ]
         doc_code, self.doc_messages = self.chat_gpt_wrapper(
             input_messages=self.doc_messages)
 
@@ -308,10 +313,13 @@ class CodeToolbox:
             ('function sum(a, b) { return a + b; }', [{'role': 'system', 'content': 'you are providing conversion to ...'}, {'role': 'user', 'content': 'convert the following code to ...'}])
         """
         conv_prompt = f"you are providing conversion to {self.config['conversion_target']} of the codes you are given {self.repo_explanation}"
-        self.conv_messages = []
-        self.conv_messages.append({"role": "system", "content": conv_prompt})
-        self.conv_messages.append({"role": "user", "content": f"convert the following code to {self.config['conversion_target']}\
-                                     {self.class_part},{func_str} "})
+        self.conv_messages = [
+            {"role": "system", "content": conv_prompt},
+            {
+                "role": "user",
+                "content": f"convert the following code to {self.config['conversion_target']}\\n        #                                     {self.class_part},{func_str} ",
+            },
+        ]
         self.language = self.config['conversion_target']
         conv_code, self.conv_messages = self.chat_gpt_wrapper(
             input_messages=self.conv_messages)
@@ -364,14 +372,12 @@ class CodeToolbox:
         for fun_name in all_functions.keys():
             if fun_name in func_str:
                 other_func_str +=f"{remove_comments_and_docstrings(all_functions[fun_name])}\n"
-        if class_obj and not function_name=='__init__':
+        if class_obj and function_name != '__init__':
             init_method_str_for_class = self.find_key_value_pairs(self.object_dict,class_obj)[0][class_obj]['__init__']
             other_func_str += f"{remove_comments_and_docstrings(init_method_str_for_class)}\n"
         unit_test_prompt = f"you are providing unit test using {self.config['unit_test_package']}` and\
             {self.config['platform']}, you only provide code and do not explain anything."
-        self.unit_test_messages = []
-        self.unit_test_messages.append(
-            {"role": "system", "content": unit_test_prompt})
+        self.unit_test_messages = [{"role": "system", "content": unit_test_prompt}]
         request_for_unit_test = f" provide unit test for the function `{self.class_part}```python\
             {remove_comments_and_docstrings(func_str)} \
             ```\,{other_func_str}`.\
@@ -385,7 +391,7 @@ class CodeToolbox:
         current_test_path = f"{self.config['directory']}/unit_test/test_{class_name}_{function_name}.py"
         with open(current_test_path, "w") as test_f:
             test_f.write(unit_test_code)
-        command = [i for i in self.config['test_command'].split(' ')]
+        command = list(self.config['test_command'].split(' '))
         command.append(f'unit_test/test_{class_name}_{function_name}.py')
         test_output = subprocess.run(command,capture_output=True, text=True)
         minimum_test_failure = self.config['test_failure_retry']
@@ -454,7 +460,7 @@ class CodeToolbox:
         unit_test_package: str = "pytest",
         doc_package: str = "sphinx",
         platform: str = "Python 3.9",
-    ) -> None:
+    ) -> None:  # sourcery skip: low-code-quality
         """
         Pipeline to generate unit test for all code files that contain modules in a directory.
 
@@ -481,33 +487,23 @@ class CodeToolbox:
             directory=self.directory, object_dict=self.object_dict, directory_dict=self.directory_dict
         )
 
-        if os.path.exists("current_modules.json"):
-            with open("current_modules.json", "r") as current_file:
-                self.current_data = json.load(current_file)
-
         if os.path.exists("previous_modules.json"):
-            with open("previous_modules.json", "r") as previous_file:
-                self.previous_data = json.load(previous_file)
-        else:
-            self.previous_data = None
+            with open("previous_modules.json", "r") as current_file:
+                self.previous_object_dict = json.load(current_file)
 
         # loop through all files in the current repo
         for self.file_path, objects in self.object_dict.items():
-            if "objects" in objects:
-                if not os.path.exists(
+            if not os.path.exists(
                     "current_modules.json"
-                ):  # this is the first push, so all unit tests, documents need to be generated (no modification/ deletion)
+                ):
+                if "objects" in objects:  # this is the first push, so all unit tests, documents need to be generated (no modification/ deletion)
                     for obj_key, obj_value in objects["objects"].items():
                         if obj_value:
                             self.object_processor(obj_key, obj_value)
-                # check if file already exists before push
-                elif os.path.exists("previous_modules.json"):
+            elif os.path.exists("previous_modules.json"):
                     # file does not exist previous, meaning this file is newly created so whole new unit tests need to be generated
-                    if self.file_path not in self.previous_data:
-                        for obj_key, obj_value in objects["objects"].items():
-                            if obj_value:
-                                self.object_processor(obj_key, obj_value)
-                    else:
+                if self.file_path in self.previous_object_dict:
+                    if "objects" in objects:
                         # if file exists previously
                         # detect the class/ function that got modified and regenerate unit test
                         # loop through all objects in file to detect the changes
@@ -521,14 +517,13 @@ class CodeToolbox:
                                             0].split(" ")[1]
                                         function_name = str(class_method).split(".")[
                                             1].split(" ")[0]
-                                        function_changed = self.has_function_changed(
+                                        if function_changed := self.has_function_changed(
                                             self.current_data,
-                                            self.previous_data,
+                                            self.previous_object_dict,
                                             self.file_path,
                                             class_name,
                                             function_name,
-                                        )
-                                        if function_changed:
+                                        ):
                                             self.method_function_processor(
                                                 class_name=class_name,
                                                 function_name=function_name,
@@ -538,30 +533,32 @@ class CodeToolbox:
                                             )
                                 else:  # file only has functions
                                     function_name = obj_key
-                                    function_changed = self.has_function_changed(
-                                        self.current_data, self.previous_data, self.file_path, class_name, function_name
-                                    )
-                                    if function_changed:
+                                    if function_changed := self.has_function_changed(
+                                        self.current_data,
+                                        self.previous_object_dict,
+                                        self.file_path,
+                                        class_name,
+                                        function_name,
+                                    ):
                                         self.method_function_processor(
                                             class_name=None,
                                             function_name=function_name,
                                             func_str=self.current_data[self.file_path]["objects"][function_name],
                                         )
-                else:  # when `current_modules.json` exist but `previous_modules.json` doesn't exist
-                    # `current_modules.json` exist when `main.py` is already executed -> not the first push -> need to do comparision
-                    # `previous_modules.json` doesn't exist when `main.py` is executed without pushing (because every push will make `previous_modules.json`)
-                    print('no action needed')
-
-                # TODO: merge all unit test into one file
-                # unit_test_path = file_path[::-1].replace('\\','/test_',1)[::-1]
-                # with open(unit_test_path, "w") as test_f:
-                #     test_f.write(generated_unit_test)
+                elif "objects" in objects:
+                    for obj_key, obj_value in objects["objects"].items():
+                        if obj_value:
+                            self.object_processor(obj_key, obj_value)
+            elif "objects" in objects:  # when `current_modules.json` exist but `previous_modules.json` doesn't exist
+                # `current_modules.json` exist when `main.py` is already executed -> not the first push -> need to do comparison
+                # `previous_modules.json` doesn't exist when `main.py` is executed without pushing (because every push will make `previous_modules.json`)
+                print('no action needed')
 
         # loop through all files in the previous repo
-        if self.previous_data:
-            for self.previous_file_path, objects in self.previous_data.items():
-                if self.previous_file_path in self.current_data:
-                    if "objects" in objects:
+        if self.previous_object_dict:
+            for self.previous_file_path, objects in self.previous_object_dict.items():
+                if "objects" in objects:
+                    if self.previous_file_path in self.current_data:
                         # loop through objects to delete certain object
                         if "objects" in self.current_data[self.previous_file_path]:
                             for obj_key, obj_value in objects["objects"].items():
@@ -574,13 +571,20 @@ class CodeToolbox:
                                                         0].split(" ")[1]
                                                     function_name = str(class_method).split(".")[
                                                         1].split(" ")[0]
-                                                    if class_method_name not in self.current_data[self.previous_file_path]["objects"][obj_key][obj_value]:
-                                                        self.delete_unit_test_file_for_each_function(
-                                                            class_name, function_name)
-                                                    else:
+                                                    if (
+                                                        class_method_name
+                                                        in self.current_data[
+                                                            self.previous_file_path
+                                                        ]["objects"][obj_key][
+                                                            obj_value
+                                                        ]
+                                                    ):
                                                         if class_method not in self.current_data[self.previous_file_path]["objects"][obj_key][obj_value][class_method_name]:
                                                             self.delete_unit_test_file_for_each_function(
                                                                 class_name, function_name)
+                                                    else:
+                                                        self.delete_unit_test_file_for_each_function(
+                                                            class_name, function_name)
                                             else:
                                                 for class_method_name, class_method in obj_value.items():
                                                     class_name = str(class_method).split(".")[
@@ -589,20 +593,18 @@ class CodeToolbox:
                                                         1].split(" ")[0]
                                                     self.delete_unit_test_file_for_each_function(
                                                         class_name, function_name)
-                                        else:
-                                            if obj_value in self.current_data[self.previous_file_path]["objects"][obj_key]:
-                                                class_name = None
-                                                function_name = obj_key
-                                                self.delete_unit_test_file_for_each_function(
-                                                    class_name, function_name)
+                                        elif obj_value in self.current_data[self.previous_file_path]["objects"][obj_key]:
+                                            class_name = None
+                                            function_name = obj_key
+                                            self.delete_unit_test_file_for_each_function(
+                                                class_name, function_name)
                                     else:
                                         self.object_deleter(obj_key, obj_value)
                         else:
                             for obj_key, obj_value in objects["objects"].items():
                                 if obj_value:
                                     self.object_deleter(obj_key, obj_value)
-                else:
-                    if "objects" in objects:
+                    else:
                         for obj_key, obj_value in objects["objects"].items():
                             if obj_value:
                                 self.object_deleter(obj_key, obj_value)

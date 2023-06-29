@@ -3,7 +3,8 @@ import pytest
 from typing import Any, Tuple, Union
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, DateType, IntegerType, FloatType, DoubleType
-from test_code.data_quality_package.dq_utility import DataCheck
+from ..dq_utility import DataCheck
+
 
 # Create DataFrame
 @pytest.fixture
@@ -15,6 +16,7 @@ def datacheck_instance():
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)
     return data_check
+
 
 def test_range_cond_syntax(datacheck_instance):
     input_col = "Patient Number"

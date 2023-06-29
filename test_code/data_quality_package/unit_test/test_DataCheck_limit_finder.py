@@ -4,7 +4,9 @@ from typing import Any, Union
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, DateType, IntegerType, FloatType, DoubleType
 from pyspark.sql import functions as f
-from test_code.data_quality_package.dq_utility import DataCheck
+from ..dq_utility import DataCheck
+
+
 
 # Create DataFrame
 @pytest.fixture

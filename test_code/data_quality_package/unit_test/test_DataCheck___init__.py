@@ -1,7 +1,9 @@
 import json
 import pytest
 from pyspark.sql import SparkSession
-from test_code.data_quality_package.dq_utility import DataCheck
+from ..dq_utility import DataCheck
+
+
 from unittest.mock import MagicMock
 
 # Create DataFrame

@@ -2,12 +2,11 @@ import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as f
 from pyspark.sql.types import StringType, DateType, IntegerType, FloatType, DoubleType
-from test_code.data_quality_package.dq_utility import DataCheck
+from ..dq_utility import DataCheck
+
 
 # Create SparkSession
-spark = SparkSession.builder \
-    .appName("Data Quality Unit Test") \
-    .getOrCreate()
+spark = SparkSession.builder.appName("Data Quality Unit Test").getOrCreate()
 
 # Create DataFrame
 df = spark.read.parquet("data/test_data.parquet")
@@ -20,6 +19,7 @@ def datacheck_instance():
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)
     return data_check
+
 
 # Test duplicate_check function
 def test_duplicate_check(datacheck_instance):
@@ -34,5 +34,8 @@ def test_duplicate_check(datacheck_instance):
     datacheck_instance.duplicate_check(input_col)
 
     assert error_col_name in datacheck_instance.source_df.columns
-    assert error_col_name not in datacheck_instance.source_df.drop(f.col("Duplicate_indicator")).columns
+    assert (
+        error_col_name
+        not in datacheck_instance.source_df.drop(f.col("Duplicate_indicator")).columns
+    )
     assert duplicate_error_msg in datacheck_instance.error_columns

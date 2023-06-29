@@ -4,7 +4,8 @@ import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, IntegerType, DateType, FloatType, DoubleType
 from pyspark.sql.functions import col
-from test_code.data_quality_package.dq_utility import DataCheck
+from ..dq_utility import DataCheck
+
 
 # Create SparkSession
 spark = SparkSession.builder.master("local").appName("DataCheckTest").getOrCreate()
@@ -13,8 +14,42 @@ spark = SparkSession.builder.master("local").appName("DataCheckTest").getOrCreat
 @pytest.fixture
 def df():
     data = [
-        ("123", "Active", "Sub Status 1", "Plan A", "High", "Payer 1", "2021-01-01", 10, 80, 20, 1000, "2021-01-02", "2021-01-03", "2021-01-04", "2021-01-05", "2021-12-31"),
-        ("456", "Inactive", "Sub Status 2", "Plan B", "Low", "Payer 2", "2021-02-01", 20, 70, 30, 2000, "2021-02-02", "2021-02-03", "2021-02-04", "2021-02-05", "2021-12-31"),
+        (
+            "123",
+            "Active",
+            "Sub Status 1",
+            "Plan A",
+            "High",
+            "Payer 1",
+            "2021-01-01",
+            10,
+            80,
+            20,
+            1000,
+            "2021-01-02",
+            "2021-01-03",
+            "2021-01-04",
+            "2021-01-05",
+            "2021-12-31",
+        ),
+        (
+            "456",
+            "Inactive",
+            "Sub Status 2",
+            "Plan B",
+            "Low",
+            "Payer 2",
+            "2021-02-01",
+            20,
+            70,
+            30,
+            2000,
+            "2021-02-02",
+            "2021-02-03",
+            "2021-02-04",
+            "2021-02-05",
+            "2021-12-31",
+        ),
     ]
     schema = [
         "Patient Number",
@@ -35,6 +70,7 @@ def df():
         "Expiry Date",
     ]
     return spark.createDataFrame(data, schema)
+
 
 @pytest.fixture
 def datacheck_instance(df):
@@ -63,7 +99,23 @@ def datacheck_instance(df):
 
     rule_df = pd.DataFrame(
         [
-            ("fasenra_astrazeneca_detailed_reports_payer_report_reimb_history", "Patient Number", "FALSE", "StringType", "null", "FALSE", "null", "null", "null", "null", "null", "null", "null", "null", "null"),
+            (
+                "fasenra_astrazeneca_detailed_reports_payer_report_reimb_history",
+                "Patient Number",
+                "FALSE",
+                "StringType",
+                "null",
+                "FALSE",
+                "null",
+                "null",
+                "null",
+                "null",
+                "null",
+                "null",
+                "null",
+                "null",
+                "null",
+            ),
         ],
         columns=[
             "file_name",
@@ -83,7 +135,14 @@ def datacheck_instance(df):
     )
     rule_df.to_csv("s3://path-to-dq-rule-file.csv", index=False)
 
-    return DataCheck(source_df=df, spark_context=spark, config_path="config.json", file_name=file_name, src_system=src_system)
+    return DataCheck(
+        source_df=df,
+        spark_context=spark,
+        config_path="config.json",
+        file_name=file_name,
+        src_system=src_system,
+    )
+
 
 def test_file_check(df, datacheck_instance):
     input_col = "Patient Number"
@@ -91,4 +150,7 @@ def test_file_check(df, datacheck_instance):
 
     assert file_check_cond is not None
     assert isinstance(file_check_cond, col)
-    assert file_error_msg == "file_check_type_1_FAIL: Column [['Patient Number']] did not pass the file_check_type_1."
+    assert (
+        file_error_msg
+        == "file_check_type_1_FAIL: Column [['Patient Number']] did not pass the file_check_type_1."
+    )

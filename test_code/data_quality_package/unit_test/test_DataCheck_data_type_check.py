@@ -5,7 +5,8 @@ import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql.types import StringType, DateType, IntegerType, FloatType, DoubleType
-from test_code.data_quality_package.dq_utility import DataCheck
+from ..dq_utility import DataCheck
+
 
 # Create DataFrame
 @pytest.fixture
@@ -13,9 +14,11 @@ def spark():
     spark = SparkSession.builder.master("local").appName("DataCheckTest").getOrCreate()
     return spark
 
+
 @pytest.fixture
 def df(spark):
     return spark.read.parquet("data/test_data.parquet")
+
 
 @pytest.fixture
 def datacheck_instance(df, spark):
@@ -24,6 +27,7 @@ def datacheck_instance(df, spark):
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)
     return data_check
+
 
 def test_data_type_check(datacheck_instance):
     input_col = "Patient Number"

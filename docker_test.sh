@@ -1,4 +1,4 @@
-HOST_DIRECTORY=.
+HOST_DIRECTORY=data_quality_package
 CONTAINER_DIRECTORY=/home/glue_user/workspace
 PROFILE_NAME=default
 sudo cp -r ~/.aws .

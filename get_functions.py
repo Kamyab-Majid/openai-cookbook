@@ -21,11 +21,8 @@ def recursive_items(dictionary: Dict[str, Union[str, Dict[str, Any]]]) -> Union[
         ('a', 1), ('b', {'c': 2, 'd': 3})
     """
     for key, value in dictionary.items():
-        if type(value) is dict:
-            if value:
-                return key + "," + "".join(recursive_items(value))
-            else:
-                return (key, value)
+        if type(value) is dict and value:
+            return f"{key}," + "".join(recursive_items(value))
         else:
             return (key, value)
 
@@ -63,7 +60,17 @@ def import_modules_from_file(filepath: str, extension: str, object_dict: Dict[st
         >>> import_modules_from_file("example.py", ".py", object_dict, directory_dict)
         ({'example.py': {'objects': {...}, 'import_str': '...'}}, {'example.py': {'objects': {...}, 'functions': [...]}})
     """
-    if extension == ".json":
+    if extension == ".csv":
+        # Open the CSV file for reading
+        with open(filepath, newline="") as f:
+            reader = csv.reader(f)
+
+            # Read the first row of the CSV file, which contains the column names
+            column_names = next(reader)
+
+        # Print the column names
+        directory_dict[f"{filepath}column_names"] = column_names
+    elif extension == ".json":
         with open(filepath, "r") as f:
             data = json.load(f)
 
@@ -75,62 +82,57 @@ def import_modules_from_file(filepath: str, extension: str, object_dict: Dict[st
                 for key2 in data[key1]:
                     keys.add(f"{key1}.{key2}")
 
-        # Convert the set of keys to a string
-        key_string = "\n".join(keys)
-        directory_dict[filepath + "key_string"] = key_string
-    elif extension == ".csv":
-        # Open the CSV file for reading
-        with open(filepath, newline="") as f:
-            reader = csv.reader(f)
-
-            # Read the first row of the CSV file, which contains the column names
-            column_names = next(reader)
-
-        # Print the column names
-        directory_dict[filepath + "column_names"] = column_names
+        directory_dict[f"{filepath}key_string"] = "\n".join(keys)
     elif extension == ".py":
-        with open(filepath, "r") as f:
-            code = f.read()
-        object_dict[filepath] = {}
-        directory_dict[filepath] = {}
-        object_dict[filepath]["objects"] = {}
-        directory_dict[filepath]["objects"] = {}
-        tree = ast.parse(code)
-        import_str = ""
-        for node in tree.body:
-            if isinstance(node, ast.Import):
-                import_str += f"import {', '.join([alias.name for alias in node.names])}"
-            elif isinstance(node, ast.ImportFrom):
-                import_str += f"from {node.module} import {', '.join([alias.name for alias in node.names])}"
-        module_name = filepath.split("/")[-1].split(".")[0]
-        spec = importlib.util.spec_from_file_location(module_name, filepath)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        members = getmembers(module, inspect.isfunction)
-        for member in members:
-            if not "import_str" in object_dict[filepath]:
-                object_dict[filepath]["import_str"] = import_str
-                directory_dict[filepath]["functions"] = []
-            if member[1].__module__ == module.__name__:
-                object_dict[filepath]["objects"][member[0]] = inspect.getsource(member[1])
-                directory_dict[filepath]["functions"].append(member[0])
-        classes = [m[1] for m in getmembers(module, inspect.isclass)]
-
-        for class_ in classes:
-            if class_.__module__!=module.__name__:
-                continue
-            object_dict[filepath]["objects"][class_] = {}
-            directory_dict[filepath]["objects"][class_] = []
-            members = getmembers(class_, inspect.isfunction)
-            for member in members:
-                if not "import_str" in object_dict[filepath]:
-                    object_dict[filepath]["import_str"] = import_str
-                directory_dict[filepath]["objects"][class_].append(member[0])
-                object_dict[filepath]["objects"][class_][member[0]] = inspect.getsource(member[1])
-
-                # else:
-                # print(f"Skipping imported method: {member[0]}")
+        python_function_dict_creator(
+            filepath, object_dict, directory_dict
+        )
     return object_dict, directory_dict
+
+
+# TODO Rename this here and in `import_modules_from_file`
+def python_function_dict_creator(filepath, object_dict, directory_dict):
+    with open(filepath, "r") as f:
+        code = f.read()
+    object_dict[filepath] = {}
+    directory_dict[filepath] = {}
+    object_dict[filepath]["objects"] = {}
+    directory_dict[filepath]["objects"] = {}
+    tree = ast.parse(code)
+    import_str = ""
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            import_str += f"import {', '.join([alias.name for alias in node.names])}"
+        elif isinstance(node, ast.ImportFrom):
+            import_str += f"from {node.module} import {', '.join([alias.name for alias in node.names])}"
+    module_name = filepath.split("/")[-1].split(".")[0]
+    spec = importlib.util.spec_from_file_location(module_name, filepath)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    members = getmembers(module, inspect.isfunction)
+    for member in members:
+        if "import_str" not in object_dict[filepath]:
+            object_dict[filepath]["import_str"] = import_str
+            directory_dict[filepath]["functions"] = []
+        if member[1].__module__ == module.__name__:
+            object_dict[filepath]["objects"][member[0]] = inspect.getsource(member[1])
+            directory_dict[filepath]["functions"].append(member[0])
+    classes = [m[1] for m in getmembers(module, inspect.isclass)]
+
+    for class_ in classes:
+        if class_.__module__!=module.__name__:
+            continue
+        object_dict[filepath]["objects"][class_] = {}
+        directory_dict[filepath]["objects"][class_] = []
+        members = getmembers(class_, inspect.isfunction)
+        for member in members:
+            if "import_str" not in object_dict[filepath]:
+                object_dict[filepath]["import_str"] = import_str
+            directory_dict[filepath]["objects"][class_].append(member[0])
+            object_dict[filepath]["objects"][class_][member[0]] = inspect.getsource(member[1])
+
+                        # else:
+                        # print(f"Skipping imported method: {member[0]}")
 
 def import_all_modules(directory: str, object_dict: Dict, directory_dict: Dict) -> Tuple[Dict, Dict]:
     """

@@ -13,7 +13,20 @@ import org.json4s.jackson.Serialization
 import org.json4s.jackson.Serialization.{read, write}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
-
+import org.apache.spark.sql.functions.{col, lit, when}
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, SparkSession,Column,DataFrame}
+import org.apache.spark.sql.types._
+import scala.collection.mutable.ListBuffer
+import scala.io.Source
+import java.io.File
+import com.amazonaws.services.s3.AmazonS3ClientBuilder
+import com.amazonaws.services.s3.model.S3ObjectInputStream
+import org.apache.commons.io.IOUtils
+import org.json4s._
+import org.json4s.jackson.JsonMethods._
+import org.json4s.DefaultFormats
+import org.apache.spark.sql.Column
 class DataCheck(
     source_df: DataFrame,
     spark_context: SparkSession,
@@ -22,7 +35,8 @@ class DataCheck(
     src_system: String
 ) {
   implicit val formats = DefaultFormats
-
+  private var error_counter: Int = 0
+  private var error_columns: List[Column] = List()
   val spark: SparkSession = spark_context
   val sourceDf: DataFrame = source_df
   var errorDf: DataFrame = _
@@ -53,6 +67,7 @@ class DataCheck(
   spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", true)
 
   // Helper methods
+  
   def readS3File(s3Path: String): String = {
     val s3Client = AmazonS3ClientBuilder.defaultClient()
     val s3Uri = new AmazonS3URI(s3Path)
@@ -68,13 +83,6 @@ class DataCheck(
     val env = parse(envContent).extract[Map[String, Any]]
     config.map { case (k, v) => k -> v.toString.replace("${env}", env(k).toString) }
   }
-}import org.apache.spark.sql.{Column, DataFrame}
-import org.apache.spark.sql.functions.{col, lit, when}
-
-class DataCheck(var source_df: DataFrame) {
-  private var error_counter: Int = 0
-  private var error_columns: List[Column] = List()
-
   def add_error_col(error_msg: String, condition: Column, error_col_name: String): Unit = {
     if (condition != null && error_col_name != null && error_msg != null) {
       val col_condition = when(condition, lit(error_msg)).otherwise(lit(null))
@@ -84,9 +92,7 @@ class DataCheck(var source_df: DataFrame) {
       error_counter += 1
     }
   }
-}import org.apache.spark.sql.functions._
-import org.apache.spark.sql.Column
-
+}
 def categoryCheck(inputCol: String, ruleDf: DataFrame, sourceDf: DataFrame): DataFrame = {
   println("start category check")
 
@@ -103,17 +109,7 @@ def categoryCheck(inputCol: String, ruleDf: DataFrame, sourceDf: DataFrame): Dat
 
   addErrorCol(categoryErrorMsg, categoryCond, inputCol + " category_check")
   println(s"[$inputCol] category check is done.")
-}import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.apache.spark.sql.types._
-import scala.collection.mutable.ListBuffer
-import scala.io.Source
-import java.io.File
-import com.amazonaws.services.s3.AmazonS3ClientBuilder
-import com.amazonaws.services.s3.model.S3ObjectInputStream
-import org.apache.commons.io.IOUtils
-import org.json4s._
-import org.json4s.jackson.JsonMethods._
-import org.json4s.DefaultFormats
+}
 
 class DataCheck(
     source_df: DataFrame,
@@ -144,15 +140,6 @@ class DataCheck(
   val output_columns: List[String] = config(src_system).asInstanceOf[Map[String, Any]]("sources").asInstanceOf[Map[String, Any]](file_name).asInstanceOf[Map[String, Any]]("dq_output_columns").asInstanceOf[List[String]]
   val sns_message: ListBuffer[String] = ListBuffer()
 
-  // Read S3 file
-  def read_s3_file(path: String): String = {
-    val s3Client = AmazonS3ClientBuilder.standard().build()
-    val s3Object = s3Client.getObject(path.split("/")(2), path.split("/").drop(3).mkString("/"))
-    val inputStream: S3ObjectInputStream = s3Object.getObjectContent()
-    val content: String = IOUtils.toString(inputStream)
-    inputStream.close()
-    content
-  }
 
   // Resolve config
   def resolve_config(envPath: String, config: Map[String, Any]): Map[String, Any] = {
@@ -182,8 +169,7 @@ class DataCheck(var source_df: DataFrame) {
       error_counter += 1
     }
   }
-}import org.apache.spark.sql.functions._
-import org.apache.spark.sql.Column
+}
 
 def categoryCheck(inputCol: String, ruleDf: DataFrame, sourceDf: DataFrame): DataFrame = {
   println("start category check")

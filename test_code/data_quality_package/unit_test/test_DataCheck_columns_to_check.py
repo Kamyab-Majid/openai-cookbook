@@ -2,7 +2,9 @@ import pytest
 import pandas as pd
 from typing import Any, List
 from pyspark.sql import SparkSession
-from test_code.data_quality_package.dq_utility import DataCheck
+from ..dq_utility import DataCheck
+
+
 
 # Create DataFrame
 @pytest.fixture
