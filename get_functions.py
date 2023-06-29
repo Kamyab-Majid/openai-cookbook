@@ -6,7 +6,10 @@ import ast
 import importlib
 import csv
 
-def recursive_items(dictionary: Dict[str, Union[str, Dict[str, Any]]]) -> Union[str, Tuple[str, Union[str, Dict[str, Any]]]]:
+
+def recursive_items(
+    dictionary: Dict[str, Union[str, Dict[str, Any]]]
+) -> Union[str, Tuple[str, Union[str, Dict[str, Any]]]]:
     """
     Recursively iterates through a dictionary and returns the key-value pairs.
 
@@ -26,6 +29,7 @@ def recursive_items(dictionary: Dict[str, Union[str, Dict[str, Any]]]) -> Union[
         else:
             return (key, value)
 
+
 def getmembers(item: Any, predicate: Optional[Callable] = None) -> List[Tuple[str, Any]]:
     """
     Get all members of an object.
@@ -41,7 +45,10 @@ def getmembers(item: Any, predicate: Optional[Callable] = None) -> List[Tuple[st
         predicate = inspect.ismemberdescriptor
     return inspect.getmembers(item, predicate)
 
-def import_modules_from_file(filepath: str, extension: str, object_dict: Dict[str, Any], directory_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+
+def import_modules_from_file(
+    filepath: str, extension: str, object_dict: Dict[str, Any], directory_dict: Dict[str, Any]
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Imports modules from a file and updates the object_dict and directory_dict with the imported data.
 
@@ -84,9 +91,7 @@ def import_modules_from_file(filepath: str, extension: str, object_dict: Dict[st
 
         directory_dict[f"{filepath}key_string"] = "\n".join(keys)
     elif extension == ".py":
-        python_function_dict_creator(
-            filepath, object_dict, directory_dict
-        )
+        python_function_dict_creator(filepath, object_dict, directory_dict)
     return object_dict, directory_dict
 
 
@@ -104,7 +109,9 @@ def python_function_dict_creator(filepath, object_dict, directory_dict):
         if isinstance(node, ast.Import):
             import_str += f"import {', '.join([alias.name for alias in node.names])}"
         elif isinstance(node, ast.ImportFrom):
-            import_str += f"from {node.module} import {', '.join([alias.name for alias in node.names])}"
+            import_str += (
+                f"from {node.module} import {', '.join([alias.name for alias in node.names])}"
+            )
     module_name = filepath.split("/")[-1].split(".")[0]
     spec = importlib.util.spec_from_file_location(module_name, filepath)
     module = importlib.util.module_from_spec(spec)
@@ -120,7 +127,7 @@ def python_function_dict_creator(filepath, object_dict, directory_dict):
     classes = [m[1] for m in getmembers(module, inspect.isclass)]
 
     for class_ in classes:
-        if class_.__module__!=module.__name__:
+        if class_.__module__ != module.__name__:
             continue
         object_dict[filepath]["objects"][class_] = {}
         directory_dict[filepath]["objects"][class_] = []
@@ -131,10 +138,13 @@ def python_function_dict_creator(filepath, object_dict, directory_dict):
             directory_dict[filepath]["objects"][class_].append(member[0])
             object_dict[filepath]["objects"][class_][member[0]] = inspect.getsource(member[1])
 
-                        # else:
-                        # print(f"Skipping imported method: {member[0]}")
+            # else:
+            # print(f"Skipping imported method: {member[0]}")
 
-def import_all_modules(directory: str, object_dict: Dict, directory_dict: Dict) -> Tuple[Dict, Dict]:
+
+def import_all_modules(
+    directory: str, ignore_directories, object_dict: Dict, directory_dict: Dict
+) -> Tuple[Dict, Dict]:
     """
     Import all modules from a directory.
 
@@ -149,33 +159,49 @@ def import_all_modules(directory: str, object_dict: Dict, directory_dict: Dict) 
     Examples:
         >>> object_dict, directory_dict = import_all_modules("my_directory", {}, {})
     """
-
+    ignore_directories = [os.path.normpath(x) for x in ignore_directories]
     for current_file in os.listdir(directory):
-        if current_file == 'docs':
+        if current_file == "docs":
             continue
         filepath = os.path.join(directory, current_file)
+        if current_file == 'unit_test':
+            print('hi')
+        if current_file.startswith(".") or filepath in ignore_directories:
+            continue
+
         if os.path.isdir(filepath):
             # Recursively call the function for subdirectories
-            import_all_modules(filepath, object_dict, directory_dict)
+            import_all_modules(filepath, ignore_directories, object_dict, directory_dict)
         elif current_file.endswith(".json"):
             object_dict, directory_dict = import_modules_from_file(
-                filepath=filepath, extension=".json", object_dict=object_dict, directory_dict=directory_dict
+                filepath=filepath,
+                extension=".json",
+                object_dict=object_dict,
+                directory_dict=directory_dict,
             )
 
         elif current_file.endswith(".csv"):
             object_dict, directory_dict = import_modules_from_file(
-                filepath=filepath, extension=".csv", object_dict=object_dict, directory_dict=directory_dict
+                filepath=filepath,
+                extension=".csv",
+                object_dict=object_dict,
+                directory_dict=directory_dict,
             )
 
         elif current_file.endswith(".py") and current_file != "__init__.py":
             object_dict, directory_dict = import_modules_from_file(
-                filepath=filepath, extension=".py", object_dict=object_dict, directory_dict=directory_dict
+                filepath=filepath,
+                extension=".py",
+                object_dict=object_dict,
+                directory_dict=directory_dict,
             )
 
     return object_dict, directory_dict
 
+
 if __name__ == "__main__":
     import json
+
     def convert_keys_to_str(dictionary):
         """
         Recursively convert dictionary keys to strings.
@@ -184,19 +210,24 @@ if __name__ == "__main__":
         for key, value in dictionary.items():
             new_key = str(key)  # Convert key to string
             if isinstance(value, dict):
-                new_dict[new_key] = convert_keys_to_str(value)  # Recursively convert nested dictionaries
+                new_dict[new_key] = convert_keys_to_str(
+                    value
+                )  # Recursively convert nested dictionaries
             else:
                 new_dict[new_key] = value
         return new_dict
 
     output_dict = {}
     directory_dict = {}
-    output_dict, directory_dict = import_all_modules("test_code", output_dict, directory_dict)
+    ignore_directory = [os.path.join("data_quality_package", "unit_test"), os.path.join("data")]
+    output_dict, directory_dict = import_all_modules(
+        "data_quality_package", ignore_directory, output_dict, directory_dict
+    )
     # print(output_dict)
     converted_dict = convert_keys_to_str(output_dict)
     # print(converted_dict)
     # print("output_dict: ", output_dict, "\ndirectory_dict :", directory_dict)
-    with open('modules.json', 'w') as f:
+    with open("modules.json", "w") as f:
         json.dump(converted_dict, f)
 
     # dict = {
