@@ -630,6 +630,4 @@ if __name__ == "__main__":
     openai.api_version = "2023-03-15-preview"
     openai.api_key = os.getenv("OPENAI_API_KEY")
     code_toolbox = CodeToolbox(config_path='code_toolbox_config.yaml')
-
-    code_toolbox.main_pipeline()
-    # print(code_toolbox.main_pipeline())
+nges
