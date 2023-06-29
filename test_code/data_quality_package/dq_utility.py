@@ -84,14 +84,14 @@ class DataCheck:
         self.rule_df = pd.read_csv(dq_rule_path, index_col="column_name")
         self.file_name = file_name
         self.rule_df = self.rule_df[(self.rule_df["file_name"] == self.file_name)]
-        self.rule_df = self.rule_df.applymap(lambda x: x if x else np.nan)
+        self.rule_df = self.rule_df.applymap(lambda x: x or np.nan)
         self.rule_df.sort_index(inplace=True)
         self.sns_message = []
-        
+
         self.input_columns = self.source_df.columns
         try:
             self.output_columns = self.config[src_system]["sources"][self.file_name]["dq_output_columns"]
-        except:
+        except Exception:
             self.output_columns= 'Patient Number'
         for index in range(len(self.input_columns)):
             if "." in self.input_columns[index]:
@@ -111,8 +111,10 @@ class DataCheck:
         try:
             file_obj = self.s3_resource.Object(file_res.netloc, file_res.path.lstrip("/"))
             return file_obj.get()["Body"].read()
-        except ClientError:
-            raise FileNotFoundError(f"File cannot be found in S3 given path '{file_path}'")
+        except ClientError as e:
+            raise FileNotFoundError(
+                f"File cannot be found in S3 given path '{file_path}'"
+            ) from e
 
     def resolve_config(self, env_path, config_content):
         env_content = self.read_s3_file(env_path).decode()
@@ -139,10 +141,7 @@ class DataCheck:
     def limit_finder(self, input_col, rule_value):
         if self.is_float(rule_value):
             rule_value = float(rule_value)
-            if math.isnan(rule_value):
-                return None
-            else:
-                return rule_value
+            return None if math.isnan(rule_value) else rule_value
         elif type(rule_value) == str:
             if rule_value not in self.input_columns:
                 print(rule_value)
@@ -180,7 +179,7 @@ class DataCheck:
         """
         if condition is not None and error_col_name and error_msg:
             col_condition = when(condition, lit(error_msg)).otherwise(lit(None))
-            error_col_name = error_col_name + str(self.error_counter)
+            error_col_name += str(self.error_counter)
             self.source_df = self.source_df.withColumn(error_col_name, col_condition)
             self.error_columns.append(col(error_col_name))
             self.error_counter += 1
@@ -223,24 +222,24 @@ class DataCheck:
         if conditional_variables == "__NOT__NULL__":
             category_cond = ~self.null_cond_syntax(input_col)
             conditional_msg = f"{input_col} is not null,"
-            return category_cond, conditional_msg
         elif self.is_float(conditional_variables):
             category_cond = self.sum_check_syntax(
                 input_col + " schema", condition_column + " schema", conditional_variables
             )
             conditional_msg = f"[{input_col}] and [{condition_column}] sum is not equal to {conditional_variables}"
-            return category_cond, conditional_msg
         else:
             category_list = conditional_variables.split(",")
-            for ind, value in enumerate(category_list):
-                if "__NOT__" == value[: len("__NOT__")]:
-                    not_category.append(category_list.pop(ind)[len("__NOT__") :])
-
+            not_category.extend(
+                category_list.pop(ind)[len("__NOT__") :]
+                for ind, value in enumerate(category_list)
+                if value[: len("__NOT__")] == "__NOT__"
+            )
             category_cond = f.col(input_col).isin(category_list) == True
             if not_category:
                 category_cond = category_cond & (f.col(input_col).isin(not_category) == False)
             conditional_msg = f"[{input_col}] is in category ({category_list}),)"
-            return category_cond, conditional_msg
+
+        return category_cond, conditional_msg
 
     # ... other methods and attributes ...
 
@@ -285,7 +284,7 @@ class DataCheck:
                     self.add_error_col(
                         error_msg=conditional_error_msg,
                         condition=conditional_cond,
-                        error_col_name=input_col + " conditional_check",
+                        error_col_name=f"{input_col} conditional_check",
                     )
                 else:
                     self.sns_message.append(
@@ -384,7 +383,7 @@ class DataCheck:
         """
         print("start category check")
         valuelist_type = self.rule_df.loc[input_col, "reference_valuelist"].upper()
-        if valuelist_type[0:2] == "__":
+        if valuelist_type[:2] == "__":
             category_cond, category_error_msg = self.file_check(input_col)
         else:
             category_list = valuelist_type.split(",")
@@ -394,7 +393,9 @@ class DataCheck:
             )
             category_error_msg = f"category_FAIL: Column [{input_col}] accepted values are ({category_list}])"
         self.add_error_col(
-            error_msg=category_error_msg, condition=category_cond, error_col_name=input_col + " category_check"
+            error_msg=category_error_msg,
+            condition=category_cond,
+            error_col_name=f"{input_col} category_check",
         )
         logger.info(f"[{input_col}] category check is done.")
 
@@ -421,8 +422,7 @@ class DataCheck:
 
     def main_pipeline(self):
 
-        columns_to_check_dict = {}
-        columns_to_check_dict[self.data_type_check] = self.columns_to_check("type")
+        columns_to_check_dict = {self.data_type_check: self.columns_to_check("type")}
         columns_to_check_dict[self.null_check] = self.rule_df[(self.rule_df["nullable"]).isna()].index
         columns_to_check_dict[self.duplicate_check] = self.columns_to_check("unique")
         columns_to_check_dict[self.category_check] = self.columns_to_check("reference_valuelist")
@@ -432,7 +432,7 @@ class DataCheck:
 
         for index in range(len(self.input_columns)):
             print("inpul col", self.input_columns[index])
-            for check_type in columns_to_check_dict.keys():
+            for check_type in columns_to_check_dict:
                 if self.input_columns[index] in columns_to_check_dict[check_type]:
                     check_type(self.input_columns[index])
 

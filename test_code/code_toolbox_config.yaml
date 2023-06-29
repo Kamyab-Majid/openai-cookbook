@@ -15,6 +15,7 @@ doc_package: sphinx
 platform: python3.9
 test_failure_retry: 1
 test_path: 'data_quality_package/unit_test'
+ignore_directories: ['data_quality_package/unit_test','data']
 test_command: "sudo -S bash test_code/docker_test.sh "
 directory: "data_quality_package"
 repo_explanation: 'the self.rule_df contains the data quality roles is given as:
