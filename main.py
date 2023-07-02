@@ -5,14 +5,16 @@ import json
 import os
 import re
 import subprocess
-from typing import Any, Dict, List, Optional, Tuple, Union  # type: ignore
-
-import openai  # used for calling the OpenAI API
+from typing import Any, Dict, List, Optional, Tuple, Union
+from matplotlib.font_manager import json_dump  # type: ignore
+import inspect
+# import openai  # used for calling the OpenAI API
 import yaml
 from get_functions import import_all_modules
 from utils import remove_comments_and_docstrings
 from deepdiff import DeepDiff
-
+import boto3
+import json
 
 class CodeToolbox:
     def __init__(self, config_path: str) -> None:
@@ -34,18 +36,24 @@ class CodeToolbox:
         - unit_test (bool): Whether to run unit tests. Default is True.
         - conversion (bool): Whether to perform language conversion. Default is True.
         - conversion_target (str): The target language for conversion. Default is 'scala'.
-        - max_tokens (int): The maximum number of tokens for ChatGPT. Default is 1000.
-        - temperature (float): The temperature for ChatGPT. Default is 0.2.
+        - max_tokens (int): The maximum number of tokens for Bedrock. Default is 1000.
+        - temperature (float): The temperature for Bedrock. Default is 0.2.
         - reruns_if_fail (int): Number of reruns if a process fails. Default is 0.
         - model (str): The GPT model to use. Default is 'gpt-4'.
-        - engine (str): The ChatGPT engine to use. Default is 'GPT4'.
+        - engine (str): The Bedrock engine to use. Default is 'GPT4'.
 
         """
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
         self.language = "python"
+        
+        session = boto3.Session(profile_name='sandbox')
+        self.bedrock = session.client(
+        service_name='bedrock',
+        region_name='us-east-1' 
+        )
 
-    def chat_gpt_wrapper(
+    def bedrock_wrapper(
         self, input_messages: List = None, fail_rerun: int = 2
     ) -> Tuple[Any, List]:
         """
@@ -63,24 +71,23 @@ class CodeToolbox:
             input_messages = []
         # the init function for this class is
         # {init_str}
-
-        plan_response = openai.ChatCompletion.create(
-            engine=self.config["engine"],
-            model=self.config["model"],
-            messages=input_messages,
-            max_tokens=self.config["max_tokens"],
-            temperature=self.config["temperature"],
-            stream=False,
-        )
-        unit_test_completion = plan_response.choices[0].message.content
-        input_messages.append({"role": "assistant", "content": unit_test_completion})
+        input_message = 'Human: '.join([list(i.items())[1][1] for i in input_messages])
+        input_body = 'hi'
+        body= "{\"prompt\":\"Human:"+ input_message.replace("\"","").replace("\\","").replace("\n", "")+"\\nAssistant:\",\"max_tokens_to_sample\":4096,\"temperature\":1,\"top_k\":250,\"top_p\":0.999,\"stop_sequences\":[\":::\"],\"anthropic_version\":\"bedrock-2023-05-31\"}" 
+        modelId = 'anthropic.claude-v1' # change this to use a different version from the model provider
+        accept = 'application/json'
+        contentType = 'application/json'
+        bedrock_api_output = self.bedrock.invoke_model(body=body, modelId=modelId, accept=accept, contentType=contentType)
+        response_body = json.loads(bedrock_api_output.get('body').read())
+        output_text = response_body['completion']
+        input_messages.append({"role": "assistant", "content": output_text})
         # check the output for errors
-        code_output = self.extract_all_code(unit_test_completion, self.language)
+        code_output = self.extract_all_code(output_text, self.language)
         try:
             if code_output:
                 ast.parse(code_output)
             else:
-                return self.chat_gpt_wrapper(
+                return self.bedrock_wrapper(
                     input_messages=input_messages, fail_rerun=fail_rerun - 1
                 )
 
@@ -88,7 +95,7 @@ class CodeToolbox:
             print(f"Syntax error in generated code: {e}")
             if self.config["reruns_if_fail"] > 0:
                 print("Rerunning...")
-                return self.chat_gpt_wrapper(
+                return self.bedrock_wrapper(
                     input_messages=input_messages, fail_rerun=fail_rerun - 1
                 )
         return code_output, input_messages
@@ -253,8 +260,8 @@ class CodeToolbox:
                 if it is a method in a class, do not provide any other code but the method itself and imports",
             },
         ]
-        doc_code, self.doc_messages = self.chat_gpt_wrapper(input_messages=self.doc_messages)
-
+        doc_code, self.doc_messages = self.bedrock_wrapper(input_messages=self.doc_messages)
+        inspect.getdoc(doc_code)
         # Open the file in read mode and read its content
         with open(self.file_path, "r") as file:
             file_content = file.read()
@@ -332,7 +339,7 @@ class CodeToolbox:
             },
         ]
         self.language = self.config["conversion_target"]
-        conv_code, self.conv_messages = self.chat_gpt_wrapper(input_messages=self.conv_messages)
+        conv_code, self.conv_messages = self.bedrock_wrapper(input_messages=self.conv_messages)
         self.language = "python"
         self.create_code_file(conv_code, self.config["conversion_target"])
 
@@ -403,7 +410,7 @@ class CodeToolbox:
             and classes, if json first and second level keys and if csv, the column names :{self.directory_dict}\n\
             the tests are going to be in {self.config['test_path']}, provide full code unit test, so I can put your answer in a file and run pytest, do not ask me to change anything given the following: {self.repo_explanation}"
         self.unit_test_messages.append({"role": "user", "content": request_for_unit_test})
-        unit_test_code, self.unit_test_messages = self.chat_gpt_wrapper(
+        unit_test_code, self.unit_test_messages = self.bedrock_wrapper(
             input_messages=self.unit_test_messages
         )
         class_name = str(class_obj).split(".")[1].split("'")[0]
@@ -428,7 +435,7 @@ class CodeToolbox:
                                                 , do not just give me the corrected part",
                     }
                 )
-                unit_test_code, self.unit_test_messages = self.chat_gpt_wrapper(
+                unit_test_code, self.unit_test_messages = self.bedrock_wrapper(
                     input_messages=self.unit_test_messages
                 )
                 if os.path.exists(current_test_path):
@@ -543,7 +550,7 @@ class CodeToolbox:
             object_dict=self.object_dict,
             directory_dict=self.directory_dict,
         )
-
+        self.previous_object_dict = {}
         if os.path.exists("previous_modules.json"):
             with open("previous_modules.json", "r") as current_file:
                 self.previous_object_dict = json.load(current_file)
@@ -569,12 +576,12 @@ if __name__ == "__main__":
 
     load_dotenv()
     import os
-
-    import openai
-
-    openai.api_type = "azure"
-    openai.api_base = "https://aoaihackathon.openai.azure.com/"
-    openai.api_version = "2023-03-15-preview"
-    openai.api_key = os.getenv("OPENAI_API_KEY")
+    import boto3
+    import json
+    session = boto3.Session(profile_name='sandbox')
+    bedrock = session.client(
+    service_name='bedrock',
+    region_name='us-east-1' 
+    )
     code_toolbox = CodeToolbox(config_path="code_toolbox_config.yaml")
     code_toolbox.main_pipeline()

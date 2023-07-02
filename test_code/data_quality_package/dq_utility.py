@@ -5,9 +5,6 @@ import math
 from typing import Any, List, Optional
 from urllib.parse import urlparse
 
-import boto3
-import numpy as np
-import pandas as pd
 import pyspark.sql.dataframe as DataFrame
 import pyspark.sql.functions as f
 from botocore.exceptions import ClientError
@@ -16,9 +13,9 @@ from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql import functions as f
 from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.functions import broadcast, col, lit, when
-from pyspark.sql.types import (DateType, DoubleType, FloatType, IntegerType,
-                               StringType)
 from pyspark.sql.utils import AnalysisException
+
+from .logger import logger
 
 # Create logger utility
 logger = logging.getLogger(__name__)
@@ -26,85 +23,16 @@ logger.setLevel(logging.INFO)
 
 # Define boto3 APIs
 class DataCheck:
-    def __init__(
-        self,
-        source_df: DataFrame,
-        spark_context: SparkSession,
-        config_path: str,
-        file_name: str,
-        src_system: str,
-    ) -> None:
+    def __init__(        self,        source_df: DataFrame,        spark_context: SparkSession,        config_path: str,        file_name: str,        src_system: str,    ) -> None:
+        """Constructor method for the DataCheck class.
+    
+        Args: 
+            source_df (DataFrame): The source DataFrame.
+            spark_context (SparkSession): The SparkSession.  
+            config_path (str): The path to the config file.
+            file_name (str): The name of the file.
+            src_system (str): The source system.
         """
-        Initializes the DataCheck class.
-
-        Args:
-            source_df (DataFrame): The source DataFrame to be checked.
-            spark_context (SparkSession): The SparkSession object.
-            config_path (str): The path to the configuration file.
-            file_name (str): The name of the file to be checked.
-            src_system (str): The source system identifier.
-
-        Attributes:
-            spark (SparkSession): The SparkSession object.
-            source_df (DataFrame): The source DataFrame to be checked.
-            error_df (DataFrame): The DataFrame containing errors.
-            error_columns (List[str]): The list of error columns.
-            error_counter (int): The error counter.
-            schema_dict (Dict[str, type]): The dictionary of schema types.
-            s3_client (boto3.client): The S3 client object.
-            s3_resource (boto3.resource): The S3 resource object.
-            config (Dict): The configuration dictionary.
-            rule_df (pd.DataFrame): The DataFrame containing data quality rules.
-            file_name (str): The name of the file to be checked.
-            input_columns (List[str]): The list of input columns.
-            output_columns (str): The output columns.
-            sns_message (List[str]): The list of SNS messages.
-        """
-        self.spark = spark_context
-        self.source_df = source_df
-        self.error_df = None
-        self.error_columns = []
-        self.error_counter = 0
-        self.schema_dict = {
-            "StringType": StringType,
-            "DateType": DateType,
-            "IntegerType": IntegerType,
-            "FloatType": FloatType,
-            "DoubleType": DoubleType,
-        }
-        self.s3_client = boto3.client("s3")
-        self.s3_resource = boto3.resource("s3")
-
-        # Initial configuration
-        config_content = self.read_s3_file(config_path).decode()
-        self.config = self.resolve_config(config_path.replace("config.json", "env.json"), json.loads(config_content))
-
-        dq_rule_path = self.config[src_system]["dq_rule_path"]
-        # dq_rule_content = self.read_s3_file(dq_rule_path)
-        self.rule_df = pd.read_csv(dq_rule_path, index_col="column_name")
-        self.file_name = file_name
-        self.rule_df = self.rule_df[(self.rule_df["file_name"] == self.file_name)]
-        self.rule_df = self.rule_df.applymap(lambda x: x or np.nan)
-        self.rule_df.sort_index(inplace=True)
-        self.sns_message = []
-
-        self.input_columns = self.source_df.columns
-        try:
-            self.output_columns = self.config[src_system]["sources"][self.file_name]["dq_output_columns"]
-        except Exception:
-            self.output_columns= 'Patient Number'
-        for index in range(len(self.input_columns)):
-            if "." in self.input_columns[index]:
-                self.input_columns[index] = "`" + self.input_columns[index] + "`"
-
-        missed_columns = set(self.input_columns) - set(self.rule_df.index)
-        if len(missed_columns) > 0:
-            logger.warning(f"[{missed_columns}] are not found in the rule file.")
-
-        self.spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
-        # self.spark.conf.set("spark.sql.legacy.timeParserPolicy", "CORRECTED")
-        self.spark.conf.set("spark.sql.adaptive.enabled", True)
-        self.spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", True)
 
     def read_s3_file(self, file_path):
         file_res = urlparse(file_path)
@@ -152,31 +80,10 @@ class DataCheck:
             return f.col(rule_value)
 
     def columns_to_check(self, criteria: str) -> List[Any]:
-        """
-        Returns a list of column indices that meet the given criteria.
-
-        Args:
-            criteria (str): The criteria to filter the columns.
-
-        Returns:
-            List[Any]: A list of column indices that meet the given criteria.
-        """
         return self.rule_df[(self.rule_df[criteria]).notna()].index
 
-    # ... other methods and attributes ...
-
     def add_error_col(self, error_msg: str, condition: Optional[Column], error_col_name: str) -> None:
-        """
-        Adds an error column to the source DataFrame if the given condition is met.
 
-        Args:
-            error_msg (str): The error message to be added to the error column.
-            condition (pyspark.sql.Column, optional): The condition to be checked. If None, no error column will be added.
-            error_col_name (str): The name of the error column.
-
-        Returns:
-            None
-        """
         if condition is not None and error_col_name and error_msg:
             col_condition = when(condition, lit(error_msg)).otherwise(lit(None))
             error_col_name += str(self.error_counter)
@@ -200,11 +107,9 @@ class DataCheck:
         type_error_msg = f"data_type_FAIL: Column [{input_col}] should be {dtype_key}"
         self.add_error_col(error_msg=type_error_msg, condition=dtype_cond, error_col_name=input_col + " type_check")
         logger.info(f"[{input_col}] dtype check is done.")
-    # ...
     def null_cond_syntax(self, input_col):
         return (f.col(input_col) == "") | (f.col(input_col).isNull())
 
-    # ...
     def null_check(self, input_col):
         print("start null_check")
         if not math.isnan(self.rule_df.loc[input_col, "nullable"]):
@@ -241,27 +146,8 @@ class DataCheck:
 
         return category_cond, conditional_msg
 
-    # ... other methods and attributes ...
-
-    # Other methods and attributes here
-
     def conditional_check(self, input_col: str) -> None:
-        """
-        Performs a conditional check on the input column based on the rules defined in the rule_df DataFrame.
 
-        Args:
-            input_col (str): The name of the input column to perform the conditional check on.
-
-        Returns:
-            None
-
-        Raises:
-            None
-
-        Notes:
-            This method updates the instance attributes such as error columns and sns_message.
-            It also logs the completion of the conditional check for the input column.
-        """
         multiple_conditional_list = self.rule_df.loc[input_col, "conditional_columns"].split(";")
         for cond_ind, condition_columns in enumerate(multiple_conditional_list):
             current_additional_cond_value = self.rule_df.loc[input_col, "conditional_column_value"].split(";")[cond_ind]
@@ -362,25 +248,8 @@ class DataCheck:
         )
         return file_cond, file_error_msg
 
-    # ... other methods and attributes ...
-
     def category_check(self, input_col: str) -> None:
-        """
-        Checks if the values in the input column match the categories specified in the rule DataFrame.
 
-        Args:
-            input_col (str): The name of the input column to check.
-
-        Returns:
-            None
-
-        Raises:
-            None
-
-        Examples:
-            >>> data_check = DataCheck(source_df, rule_df)
-            >>> data_check.category_check("column_name")
-        """
         print("start category check")
         valuelist_type = self.rule_df.loc[input_col, "reference_valuelist"].upper()
         if valuelist_type[:2] == "__":
