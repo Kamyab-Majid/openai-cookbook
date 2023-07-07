@@ -19,7 +19,7 @@ def df(spark):
 
 @pytest.fixture
 def datacheck_instance(spark, df):
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"
+    config_path = "s3://bedrock-test-bucket/config.json"
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)
@@ -33,7 +33,7 @@ def datacheck_instance(spark, df):
 
 
 def test_resolve_config(datacheck_instance):
-    env_path = "s3://config-path-for-chat-gpt-unit-test/env.json"
+    env_path = "s3://bedrock-test-bucket/env.json"
     config_content = {
         "subs": {
             "<env>": "test",
@@ -43,9 +43,7 @@ def test_resolve_config(datacheck_instance):
         }
     }
 
-    datacheck_instance.read_s3_file = MagicMock(
-        return_value=json.dumps(config_content).encode()
-    )
+    datacheck_instance.read_s3_file = MagicMock(return_value=json.dumps(config_content).encode())
     result = datacheck_instance.resolve_config(env_path, config_content)
 
     expected_result = {

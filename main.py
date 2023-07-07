@@ -39,16 +39,16 @@ class CodeToolbox:
         - max_tokens (int): The maximum number of tokens for Bedrock. Default is 1000.
         - temperature (float): The temperature for Bedrock. Default is 0.2.
         - reruns_if_fail (int): Number of reruns if a process fails. Default is 0.
-        - model (str): The GPT model to use. Default is 'gpt-4'.
-        - engine (str): The Bedrock engine to use. Default is 'GPT4'.
+        - model (str): The  model to use.
+        - engine (str): The Bedrock engine to use.
 
         """
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
         self.language = "python"
         
-        session = boto3.Session(profile_name='sandbox')
-        self.bedrock = session.client(
+        # session = boto3.Session(profile_name='sandbox')
+        self.bedrock = boto3.client(
         service_name='bedrock',
         region_name='us-east-1' 
         )
@@ -57,11 +57,11 @@ class CodeToolbox:
         self, input_messages: List = None, fail_rerun: int = 2
     ) -> Tuple[Any, List]:
         """
-        Outputs a unit test for a given Python function, using a 3-step GPT-3 prompt.
+        Outputs a unit test for a given Python function, using bedrock prompt.
 
         Args:
-            input_messages (List, optional): A list of input messages for the GPT-3 prompt. Defaults to [].
-            fail_rerun (int, optional): The number of times to rerun the GPT-3 prompt if it fails. Defaults to 2.
+            input_messages (List, optional): A list of input messages for the bedrock prompt. Defaults to [].
+            fail_rerun (int, optional): The number of times to rerun the bedrock prompt if it fails. Defaults to 2.
 
         Returns:
             Tuple[Any, List]: A tuple containing the generated unit test code and the updated input messages list.
@@ -73,7 +73,7 @@ class CodeToolbox:
         # {init_str}
         input_message = 'Human: '.join([list(i.items())[1][1] for i in input_messages])
         input_body = 'hi'
-        body= "{\"prompt\":\"Human:"+ input_message.replace("\"","").replace("\\","").replace("\n", "")+"\\nAssistant:\",\"max_tokens_to_sample\":4096,\"temperature\":1,\"top_k\":250,\"top_p\":0.999,\"stop_sequences\":[\":::\"],\"anthropic_version\":\"bedrock-2023-05-31\"}" 
+        body= "{\"prompt\":\"Human:"+ input_message.replace("\\","\\\\").replace("\"","\\\"").replace("\n", "\\n")+"\\nAssistant:\",\"max_tokens_to_sample\":4096,\"temperature\":1,\"top_k\":250,\"top_p\":0.999,\"stop_sequences\":[\":::\"],\"anthropic_version\":\"bedrock-2023-05-31\"}" 
         modelId = 'anthropic.claude-v1' # change this to use a different version from the model provider
         accept = 'application/json'
         contentType = 'application/json'
@@ -237,7 +237,15 @@ class CodeToolbox:
             class_name = None
             function_name = obj_key
             self.delete_unit_test_file_for_each_function(class_name, function_name)
-
+    @staticmethod
+    def extract_text_between_triple_quotes(string):
+        pattern = r'"""([\s\S]*?)"""'
+        match = re.search(pattern, string)
+        if match:
+            extracted_text = match.group(1)
+            return extracted_text
+        else:
+            return None
     def documenter(self, func_str: str, class_name: str = None) -> None:
         """
         Adds Sphinx docstring documentation and type hints to a given function or method in the CodeToolbox class.
@@ -246,23 +254,36 @@ class CodeToolbox:
             func_str (str): The function or method signature to be documented.
             class_name (str): if it is a method in a class, give the class name.
         """
+        if "\"\"\"" in func_str:
+            return
         doc_prompt = f"you are providing documentation and typing (type hints) of \
             code to be used in {self.config['doc_package']},\
             provide the typing imports in different code snippet, as an example for this request\
         {self.config['doc_example']}"
         class_part = f"in{self.class_name}class" if class_name else ""
         self.doc_messages = [
-            {"role": "system", "content": doc_prompt},
             {
                 "role": "user",
-                "content": f"provide {self.config['doc_package']} docstring documentation and typehints for {func_str} {class_part},\
+                "content": f"provide {self.config['doc_package']} docstring in google format for {func_str} {class_part},\
                 do not provide any other imports that are not used in typing and do not provide multiple options, just one code,\
-                if it is a method in a class, do not provide any other code but the method itself and imports",
+                if it is a method in a class, do not provide any other code but the docstring.",
             },
         ]
         doc_code, self.doc_messages = self.bedrock_wrapper(input_messages=self.doc_messages)
-        inspect.getdoc(doc_code)
         # Open the file in read mode and read its content
+        # Find the first occurrence of ) followed by any characters (except newline) and :
+        docstring = self.extract_text_between_triple_quotes(doc_code)
+        
+        match = re.search(r'\)(?:(?!\n).)*:', func_str)
+
+        if match:
+            index = match.start()
+            print(f"Found at index: {index}")
+        else:
+            print("Not found")
+        next_newline_index = func_str.find('\n', index)
+        number_of_space = len(func_str) - len(func_str.lstrip()) + 4
+        func_with_doc = func_str[:next_newline_index] +'\n'+number_of_space*' '+"\"\"\""+'\n'+number_of_space*' '  +docstring.replace('\n',f"\n{number_of_space*' '}").rstrip() +'\n'+number_of_space*' '+"\"\"\""+'\n'+ func_str[next_newline_index:]
         with open(self.file_path, "r") as file:
             file_content = file.read()
         import_pattern = r"(?m)^((?:from|import)\s+.+)$"
@@ -276,7 +297,7 @@ class CodeToolbox:
             doc_code = "\n".join(doc_code.split("\n")[1:]) + "\n"
         else:
             doc_code = "    " + doc_code.replace("\n", "\n    ") + "\n"
-        new_content = file_content.replace(func_str, doc_code)
+        new_content = file_content.replace(func_str, func_with_doc)
         all_imports = re.findall(import_pattern, new_content)
         for import_str in import_matches:
             if import_str not in all_imports:
@@ -408,7 +429,7 @@ class CodeToolbox:
             and the path of the function is {self.file_path} to give details about the structure of\
             the repo look at the dictionary below, it includes all files and if python, all function\
             and classes, if json first and second level keys and if csv, the column names :{self.directory_dict}\n\
-            the tests are going to be in {self.config['test_path']}, provide full code unit test, so I can put your answer in a file and run pytest, do not ask me to change anything given the following: {self.repo_explanation}"
+            the tests are going to be in {self.config['test_path']}, provide full code unit test, so I can put your answer in a file and run pytest, do not ask me to change anything. use the following: {self.repo_explanation}"
         self.unit_test_messages.append({"role": "user", "content": request_for_unit_test})
         unit_test_code, self.unit_test_messages = self.bedrock_wrapper(
             input_messages=self.unit_test_messages
@@ -419,35 +440,36 @@ class CodeToolbox:
         )
         with open(current_test_path, "w") as test_f:
             test_f.write(unit_test_code)
-        command = list(self.config["test_command"].split(" "))
-        command.append(f"unit_test/test_{class_name}_{function_name}.py")
-        test_output = subprocess.run(command, capture_output=True, text=True)
+        # TODO: add the test part
+        # command = list(self.config["test_command"].split(" "))
+        # command.append(f"unit_test/test_{class_name}_{function_name}.py")
+        # test_output = subprocess.run(command, capture_output=True, text=True)
         minimum_test_failure = self.config["test_failure_retry"]
         # TODO: find if we can check the failures '= FAILURES =' in test_output.stdout or
-        while minimum_test_failure > 0:
-            if "= ERRORS =" in test_output.stdout:
-                print(test_output.stdout)
-                self.unit_test_messages.append(
-                    {
-                        "role": "user",
-                        "content": f"the unit test returned {self.remove_unnecessary_text(test_output.stdout)}, redo the full code replacement of unit test\
-                                                    so I can put your answer in the file and run the pytest, dont ask me to change anything\
-                                                , do not just give me the corrected part",
-                    }
-                )
-                unit_test_code, self.unit_test_messages = self.bedrock_wrapper(
-                    input_messages=self.unit_test_messages
-                )
-                if os.path.exists(current_test_path):
-                    os.remove(current_test_path)
-                with open(current_test_path, "w") as test_f:
-                    test_f.write(unit_test_code)
-                test_output = subprocess.run(command, capture_output=True, text=True)
-            else:
-                break
-            minimum_test_failure -= 1
-        else:
-            print("min_test_failed")
+        # while minimum_test_failure > 0:
+        #     if "= ERRORS =" in test_output.stdout:
+        #         print(test_output.stdout)
+        #         self.unit_test_messages.append(
+        #             {
+        #                 "role": "user",
+        #                 "content": f"the unit test returned {self.remove_unnecessary_text(test_output.stdout)}, redo the full code replacement of unit test\
+        #                                             so I can put your answer in the file and run the pytest, dont ask me to change anything\
+        #                                         , do not just give me the corrected part",
+        #             }
+        #         )
+        #         unit_test_code, self.unit_test_messages = self.bedrock_wrapper(
+        #             input_messages=self.unit_test_messages
+        #         )
+        #         if os.path.exists(current_test_path):
+        #             os.remove(current_test_path)
+        #         with open(current_test_path, "w") as test_f:
+        #             test_f.write(unit_test_code)
+        #         test_output = subprocess.run(command, capture_output=True, text=True)
+        #     else:
+        #         break
+        #     minimum_test_failure -= 1
+        # else:
+        #     print("min_test_failed")
 
     def method_function_processor(
         self, class_name: Optional[str] = None, function_name: str = "", func_str: str = ""

@@ -78,16 +78,14 @@ def df(spark):
 
 @pytest.fixture
 def datacheck_instance(df, spark):
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"
+    config_path = "s3://bedrock-test-bucket/config.json"
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
     return DataCheck(df, spark, config_path, file_name, src_system)
 
 
 def test_add_error_col(datacheck_instance):
-    datacheck_instance.add_error_col(
-        "Test error", col("Patient Number") == "123", "error_col_"
-    )
+    datacheck_instance.add_error_col("Test error", col("Patient Number") == "123", "error_col_")
     assert "error_col_0" in datacheck_instance.source_df.columns
     assert datacheck_instance.error_counter == 1
     assert len(datacheck_instance.error_columns) == 1
@@ -101,20 +99,13 @@ def test_add_error_col(datacheck_instance):
 
     result_df = datacheck_instance.source_df.toPandas()
     assert (
-        result_df.loc[result_df["Patient Number"] == "123", "error_col_0"].values[0]
-        == "Test error"
+        result_df.loc[result_df["Patient Number"] == "123", "error_col_0"].values[0] == "Test error"
     )
+    assert pd.isnull(result_df.loc[result_df["Patient Number"] == "124", "error_col_0"].values[0])
     assert pd.isnull(
-        result_df.loc[result_df["Patient Number"] == "124", "error_col_0"].values[0]
-    )
-    assert pd.isnull(
-        result_df.loc[
-            result_df["Current Patient Status"] == "Active", "error_col_1"
-        ].values[0]
+        result_df.loc[result_df["Current Patient Status"] == "Active", "error_col_1"].values[0]
     )
     assert (
-        result_df.loc[
-            result_df["Current Patient Status"] == "Inactive", "error_col_1"
-        ].values[0]
+        result_df.loc[result_df["Current Patient Status"] == "Inactive", "error_col_1"].values[0]
         == "Test error 2"
     )

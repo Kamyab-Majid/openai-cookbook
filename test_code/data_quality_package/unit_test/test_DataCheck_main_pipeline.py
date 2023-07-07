@@ -92,7 +92,7 @@ df = spark.createDataFrame(data, columns)
 
 @pytest.fixture
 def datacheck_instance():
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"
+    config_path = "s3://bedrock-test-bucket/config.json"
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
     return DataCheck(
@@ -132,14 +132,9 @@ def test_range_check(datacheck_instance):
 
 def test_category_check(datacheck_instance):
     datacheck_instance.category_check("Current Patient Status")
-    assert (
-        "Current Patient Status category_check" in datacheck_instance.source_df.columns
-    )
+    assert "Current Patient Status category_check" in datacheck_instance.source_df.columns
 
 
 def test_conditional_check(datacheck_instance):
     datacheck_instance.conditional_check("Current Patient Sub Status")
-    assert (
-        "Current Patient Sub Status conditional_check"
-        in datacheck_instance.source_df.columns
-    )
+    assert "Current Patient Sub Status conditional_check" in datacheck_instance.source_df.columns

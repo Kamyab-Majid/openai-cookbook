@@ -21,7 +21,7 @@ def df(spark):
 
 @pytest.fixture
 def datacheck_instance(df, spark):
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"
+    config_path = "s3://bedrock-test-bucket/config.json"
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)
@@ -37,9 +37,7 @@ def datacheck_instance(df, spark):
 def test_duplicate_cond_syntax(datacheck_instance, df):
     input_col = "Patient Number"
     expected_output = df.join(
-        broadcast(
-            df.groupBy(input_col).agg((f.count("*")).alias("Duplicate_indicator"))
-        ),
+        broadcast(df.groupBy(input_col).agg((f.count("*")).alias("Duplicate_indicator"))),
         on=input_col,
         how="inner",
     ).select(f.col("Duplicate_indicator") > 1)

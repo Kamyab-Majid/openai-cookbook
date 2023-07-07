@@ -1,5 +1,5 @@
 document: true
-unit_test: true
+unit_test: false
 conversion: false
 conversion_target:
   python: py
@@ -8,8 +8,7 @@ conversion_target:
 max_tokens: 1000
 temperature: 0
 reruns_if_fail: 0
-model: gpt-4
-engine: GPT4
+model: anthropic.claude-v1
 unit_test_package: pytest
 doc_package: sphinx
 platform: python3.9
@@ -18,35 +17,15 @@ test_path: 'data_quality_package/unit_test'
 ignore_directories: ['data_quality_package/unit_test','data']
 test_command: "sudo -S bash test_code/docker_test.sh "
 directory: "data_quality_package"
-repo_explanation: 'the self.rule_df contains the data quality roles is given as:
-# Column names
-column_names = [
-    "src_file_name", "src_sheet_name", "file_name", "column_name", "nullable", "type", "date_format",
-    "unique", "min", "max", "reference_valuelist", "reference_columns", "conditional_valuelist",
-    "conditional_columns", "conditional_column_value"
-]
-
-# Content
-content = [
-    ("sample_src_file_name", "Payer Report - Reimb History", "fasenra_astrazeneca_detailed_reports_payer_report_reimb_history",
-     "Patient Number", "FALSE", "StringType", "null", "FALSE", "null", "null", "null", "null", "null", "null", "null"),
-     ...
-]
-the columns of data to check the data quality on is given as:
-columns:
-"Patient Number", "Current Patient Status", "Current Patient Sub Status", "Plan Type", "Plan Priority",
-                "Payer Name", "Final Outcome Date", "Days From First Call to Insurer To Final Outcome Date",
-                "Coverage %", "Co Payment %", "Plan Max Amount", "Submitted To MD Date", "Received From MD Date",
-                "Submitted To Insurer Date", "Result Date", "Expiry Date"
-
-use the following piece of code when needed:
+repo_explanation: '
+the following piece of code is used when the class is called:
 # Create DataFrame
 from data_quality_package.dq_utility import DataCheck\
 from pyspark.sql import SparkSession\
 @pytest.fixture\
 df = spark.read.parquet("data/test_data.parquet")
 def datacheck_instance():\
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"\
+    config_path = "s3://bedrock-test-bucket/config.json"\
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)

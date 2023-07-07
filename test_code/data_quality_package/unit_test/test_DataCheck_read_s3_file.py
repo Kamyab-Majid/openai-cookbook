@@ -23,7 +23,7 @@ def df(spark):
 
 @pytest.fixture
 def datacheck_instance(spark, df):
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"
+    config_path = "s3://bedrock-test-bucket/config.json"
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)
@@ -41,9 +41,7 @@ def test_read_s3_file(datacheck_instance):
     with patch("boto3.resource") as mock_resource:
         mock_s3_object = MagicMock()
         mock_resource.return_value.Object.return_value = mock_s3_object
-        mock_s3_object.get.return_value = {
-            "Body": MagicMock(read=lambda: b"test content")
-        }
+        mock_s3_object.get.return_value = {"Body": MagicMock(read=lambda: b"test content")}
 
         # Test valid file path
         file_path = "s3://test-bucket/test-key"
@@ -51,9 +49,7 @@ def test_read_s3_file(datacheck_instance):
         assert result == b"test content"
 
         # Test invalid file path
-        mock_s3_object.get.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchKey"}}, "GetObject"
-        )
+        mock_s3_object.get.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
         with pytest.raises(FileNotFoundError):
             datacheck_instance.read_s3_file("s3://test-bucket/invalid-key")
 

@@ -1,32 +1,20 @@
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.types._
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ListBuffer, ArrayBuffer, Map}
 import scala.io.Source
 import java.io.File
-import com.amazonaws.services.s3.AmazonS3ClientBuilder
+import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.s3.model.S3ObjectInputStream
 import org.apache.commons.io.IOUtils
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.json4s.JsonDSL._
-import org.json4s.jackson.Serialization
 import org.json4s.jackson.Serialization.{read, write}
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ArrayBuffer
-import org.apache.spark.sql.functions.{col, lit, when}
+import org.apache.spark.sql.functions.{col, lit, when, broadcast, count}
+import org.apache.spark.sql.{Column, DataFrame}
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, SparkSession,Column,DataFrame}
-import org.apache.spark.sql.types._
-import scala.collection.mutable.ListBuffer
-import scala.io.Source
-import java.io.File
-import com.amazonaws.services.s3.AmazonS3ClientBuilder
-import com.amazonaws.services.s3.model.S3ObjectInputStream
-import org.apache.commons.io.IOUtils
-import org.json4s._
-import org.json4s.jackson.JsonMethods._
-import org.json4s.DefaultFormats
-import org.apache.spark.sql.Column
+import org.apache.spark.sql.SparkSession
 class DataCheck(
     source_df: DataFrame,
     spark_context: SparkSession,
@@ -111,52 +99,6 @@ def categoryCheck(inputCol: String, ruleDf: DataFrame, sourceDf: DataFrame): Dat
   println(s"[$inputCol] category check is done.")
 }
 
-class DataCheck(
-    source_df: DataFrame,
-    spark_context: SparkSession,
-    config_path: String,
-    file_name: String,
-    src_system: String
-) {
-  val spark: SparkSession = spark_context
-  val error_df: Option[DataFrame] = None
-  val error_columns: ListBuffer[String] = ListBuffer()
-  var error_counter: Int = 0
-  val schema_dict: Map[String, DataType] = Map(
-    "StringType" -> StringType,
-    "DateType" -> DateType,
-    "IntegerType" -> IntegerType,
-    "FloatType" -> FloatType,
-    "DoubleType" -> DoubleType
-  )
-
-  // Initial configuration
-  val config_content: String = read_s3_file(config_path)
-  val config: Map[String, Any] = resolve_config(config_path.replace("config.json", "env.json"), parse(config_content).values.asInstanceOf[Map[String, Any]])
-
-  val dq_rule_path: String = config(src_system).asInstanceOf[Map[String, Any]]("dq_rule_path").asInstanceOf[String]
-  val rule_df: DataFrame = spark.read.option("header", "true").option("inferSchema", "true").csv(dq_rule_path)
-  val input_columns: List[String] = source_df.columns.toList
-  val output_columns: List[String] = config(src_system).asInstanceOf[Map[String, Any]]("sources").asInstanceOf[Map[String, Any]](file_name).asInstanceOf[Map[String, Any]]("dq_output_columns").asInstanceOf[List[String]]
-  val sns_message: ListBuffer[String] = ListBuffer()
-
-
-  // Resolve config
-  def resolve_config(envPath: String, config: Map[String, Any]): Map[String, Any] = {
-    implicit val formats: DefaultFormats.type = DefaultFormats
-    val envContent: String = read_s3_file(envPath)
-    val env: Map[String, Any] = parse(envContent).values.asInstanceOf[Map[String, Any]]
-    config.map { case (k, v) => k -> v.toString.replace("${env}", env(k).toString) }
-  }
-
-  // Spark configurations
-  spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
-  spark.conf.set("spark.sql.adaptive.enabled", true)
-  spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", true)
-}import org.apache.spark.sql.{Column, DataFrame}
-import org.apache.spark.sql.functions.{col, lit, when}
-
-class DataCheck(var source_df: DataFrame) {
   private var error_counter: Int = 0
   private var error_columns: List[Column] = List()
 
@@ -169,7 +111,6 @@ class DataCheck(var source_df: DataFrame) {
       error_counter += 1
     }
   }
-}
 
 def categoryCheck(inputCol: String, ruleDf: DataFrame, sourceDf: DataFrame): DataFrame = {
   println("start category check")
@@ -188,9 +129,7 @@ def categoryCheck(inputCol: String, ruleDf: DataFrame, sourceDf: DataFrame): Dat
 }
 
 // You will need to implement the fileCheck and addErrorCol methods as well, as they are used in the categoryCheck method.import org.apache.spark.sql.DataFrame
-import scala.collection.mutable.ListBuffer
 
-class MyClass {
   def columnsToCheck(rule_df: DataFrame, criteria: String): List[Int] = {
     val columnsWithCriteria = ListBuffer[Int]()
 
@@ -202,13 +141,11 @@ class MyClass {
 
     columnsWithCriteria.toList
   }
-}import org.apache.spark.sql.SparkSession
 
 object Main {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder().appName("Scala Example").getOrCreate()
 
-    import spark.implicits._
 
     val data = Seq(
       (1.0, None, 3.0),
@@ -222,12 +159,7 @@ object Main {
     println(obj.columnsToCheck(rule_df, "A")) // Output: List(0)
     println(obj.columnsToCheck(rule_df, "B")) // Output: List(1)
   }
-}import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.Column
-import org.apache.spark.sql.functions._
-
-class ConditionalCheck(ruleDf: DataFrame, inputColumns: List[String], fileName: String, snsMessage: List[String], logger: org.slf4j.Logger) {
-
+}
   def conditionalCheck(inputCol: String): Unit = {
     val multipleConditionalList = ruleDf.filter($"input_col" === inputCol).select("conditional_columns").collect()(0).getString(0).split(";")
     for (condInd <- multipleConditionalList.indices) {
@@ -259,12 +191,9 @@ class ConditionalCheck(ruleDf: DataFrame, inputColumns: List[String], fileName: 
   def addErrorCol(errorMsg: String, condition: Column, errorColName: String): Unit = {
     // Implement the method logic here
   }
-}import org.apache.spark.sql.Column
-import org.apache.spark.sql.functions._
+}
 
-import scala.util.Try
 
-class MyClass {
   def conditionalCondSyntax(inputCol: String, conditionColumn: String, conditionalVariables: Any): (Column, String) = {
     def isFloat(x: Any): Boolean = x match {
       case _: Float => true
@@ -303,11 +232,7 @@ class MyClass {
         (categoryCond, conditionalMsg)
     }
   }
-}import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.DataFrame
 
-class YourClassName(ruleDf: DataFrame, schemaDict: Map[String, DataType]) {
   def dataTypeCheck(inputCol: String, sourceDf: DataFrame): DataFrame = {
     println("start data type check")
     val dtypeKey = ruleDf.filter(col("column_name") === inputCol).select("type").collect()(0)(0).toString
@@ -327,11 +252,9 @@ class YourClassName(ruleDf: DataFrame, schemaDict: Map[String, DataType]) {
   def addErrorCol(sourceDf: DataFrame, errorMsg: String, condition: Column, errorColName: String): DataFrame = {
     sourceDf.withColumn(errorColName, when(condition, errorMsg).otherwise(null))
   }
-}val yourClassInstance = new YourClassName(ruleDf, schemaDict)
+val yourClassInstance = new YourClassName(ruleDf, schemaDict)
 val updatedSourceDf = yourClassInstance.dataTypeCheck("column_name", sourceDf)import org.apache.spark.sql.functions._
-import org.apache.spark.sql.Column
 
-class YourClassName {
   var source_df: DataFrame = _
 
   def duplicateCheck(input_col: String): Unit = {
@@ -358,14 +281,11 @@ class YourClassName {
   def addErrorCol(error_msg: String, condition: Column, error_col_name: String): Unit = {
     // Implement the logic for addErrorCol here
   }
-}
 
 // Usage example:
 // val your_class_instance = new YourClassName()
-// your_class_instance.duplicateCheck("column_name")import org.apache.spark.sql.{Column, DataFrame}
-import org.apache.spark.sql.functions.{broadcast, col, count}
+// your_class_instance.duplicateCheck("column_name")
 
-class MyClass {
   var sourceDf: DataFrame = _
 
   def duplicateCondSyntax(inputCol: String): Column = {
@@ -376,28 +296,7 @@ class MyClass {
     )
     col("Duplicate_indicator") > 1
   }
-}
 
-// Example usage:
-/*
-import org.apache.spark.sql.SparkSession
-
-val spark = SparkSession.builder().getOrCreate()
-import spark.implicits._
-
-val myClass = new MyClass()
-myClass.sourceDf = Seq((1, "A"), (2, "A"), (3, "B")).toDF("id", "value")
-myClass.sourceDf.show()
-
-val duplicateCond = myClass.duplicateCondSyntax("value")
-myClass.sourceDf = myClass.sourceDf.withColumn("is_duplicate", duplicateCond)
-myClass.sourceDf.show()
-*/import org.apache.spark.sql.{AnalysisException, Column, DataFrame, SparkSession}
-import org.apache.spark.sql.functions._
-
-import scala.util.Try
-
-class MyClass(spark: SparkSession, source_df: DataFrame, rule_df: DataFrame, config: Map[String, Any]) {
   def fileCheck(inputCol: String): (Option[Column], Option[String]) = {
     // finding source side columns
     var source_df_columns_list = List(inputCol)
@@ -446,7 +345,6 @@ class MyClass(spark: SparkSession, source_df: DataFrame, rule_df: DataFrame, con
     val file_error_msg = s"${file_check_type}_FAIL: Column [${source_df_columns_list.mkString(",")}] did not pass the $file_check_type."
     (Some(file_cond), Some(file_error_msg))
   }
-}object MyClass {
   def isFloat(element: Any): Boolean = {
     /**
       * Checks if the given element can be converted to a float.
@@ -466,10 +364,6 @@ class MyClass(spark: SparkSession, source_df: DataFrame, rule_df: DataFrame, con
       case _: NumberFormatException => false
     }
   }
-}import org.apache.spark.sql.Column
-import scala.util.Try
-
-class MyClass {
   var inputColumns: Set[String] = Set()
   var snsMessage: List[String] = List()
   var fileName: String = ""
@@ -504,8 +398,6 @@ class MyClass {
       None
     }
   }
-}import org.apache.spark.sql.functions._
-
 def mainPipeline(): (DataFrame, List[String]) = {
   val columnsToCheckDict = Map[String, List[String]]()
   columnsToCheckDict += (dataTypeCheck -> columnsToCheck("type"))
@@ -547,11 +439,7 @@ def mainPipeline(): (DataFrame, List[String]) = {
   }
 
   (errorDF, snsMessage)
-}import scala.math
-import org.apache.spark.sql.DataFrame
-
-class YourClassInstance(rule_df: DataFrame) {
-
+}
   def nullCheck(input_col: String): Unit = {
     println("start null_check")
     if (!math.isnan(rule_df.filter(s"input_col = '$input_col'").select("nullable").first().getDouble(0))) {
@@ -571,24 +459,14 @@ class YourClassInstance(rule_df: DataFrame) {
   def addErrorCol(error_msg: String, condition: String, error_col_name: String): Unit = {
     // Implement the add error column logic here
   }
-}import org.apache.spark.sql.Column
-import org.apache.spark.sql.functions._
-
-class MyClass {
   def nullCondSyntax(inputCol: String): Column = {
     (col(inputCol) === "") || col(inputCol).isNull
   }
-}import org.apache.spark.sql.SparkSession
-
 val spark = SparkSession.builder().getOrCreate()
-import spark.implicits._
 
 val df = Seq((1, ""), (2, null.asInstanceOf[String]), (3, "A")).toDF("id", "value")
 val myClass = new MyClass()
-df.filter(myClass.nullCondSyntax("value")).show()import org.apache.spark.sql.functions._
-import org.apache.spark.sql.Column
-
-class YourClass {
+df.filter(myClass.nullCondSyntax("value")).show()
   def rangeCheck(inputCol: String): Unit = {
     println("start range_check")
     val (minStr, maxStr, rangeErrorCond) = rangeCondSyntax(inputCol)
@@ -606,12 +484,6 @@ class YourClass {
   def addErrorCol(errorMsg: String, condition: Column, errorColName: String): Unit = {
     // Implement the logic here
   }
-}import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.Column
-import org.apache.spark.sql.functions._
-
-class MyClass(ruleDf: DataFrame) {
-
   def rangeCondSyntax(inputCol: String): (String, String, Option[Column]) = {
     val schemaCol = inputCol + " schema"
     var outputCond: Option[Column] = None
@@ -635,13 +507,6 @@ class MyClass(ruleDf: DataFrame) {
     // Implement the limitFinder logic here
     None
   }
-}import java.net.URL
-import com.amazonaws.services.s3.AmazonS3
-import com.amazonaws.services.s3.model.GetObjectRequest
-import com.amazonaws.services.s3.model.S3ObjectInputStream
-import com.amazonaws.AmazonServiceException
-import scala.util.{Try, Success, Failure}
-
 def readS3File(file_path: String, s3Client: AmazonS3): Option[Array[Byte]] = {
   val fileUrl = new URL(file_path)
   val bucket = fileUrl.getHost
@@ -658,10 +523,9 @@ def readS3File(file_path: String, s3Client: AmazonS3): Option[Array[Byte]] = {
       println(s"File cannot be found in S3 given path '$file_path'")
       None
   }
-}import com.amazonaws.services.s3.AmazonS3ClientBuilder
+}
 
-val s3Client = AmazonS3ClientBuilder.defaultClient()import scala.util.parsing.json._
-import scala.collection.mutable.Map
+val s3Client = AmazonS3ClientBuilder.defaultClient()
 
 def resolveConfig(envPath: String, configContent: Any): Map[String, Any] = {
   /**
@@ -687,14 +551,11 @@ def resolveConfig(envPath: String, configContent: Any): Map[String, Any] = {
 // You will need to implement the readS3File method to read the file from S3
 def readS3File(path: String): Array[Byte] = {
   // Implement the method to read the file from S3
-}import org.apache.spark.sql.{Column, DataFrame}
-import org.apache.spark.sql.functions._
+}
 
-class MyClass {
   def sumCheckSyntax(inputCol1: String, inputCol2: String, syntaxValue: Column): Column = {
     !((col(inputCol1) + col(inputCol2)).notEqual(syntaxValue))
   }
-}
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -703,7 +564,7 @@ object Main {
       .appName("Sum Check Syntax")
       .getOrCreate()
 
-    import spark.implicits._
+    
 
     val df = Seq((1, 2, 3), (4, 5, 9), (6, 7, 12)).toDF("col1", "col2", "syntax_value")
     val myClass = new MyClass()

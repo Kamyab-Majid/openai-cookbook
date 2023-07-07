@@ -13,10 +13,11 @@ data = [("A", "B", 3), ("C", "D", 5), ("E", "F", 7)]
 schema = ["col1", "col2", "col3"]
 df = spark.createDataFrame(data, schema)
 
+
 # Create DataCheck instance
 @pytest.fixture
 def datacheck_instance():
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"
+    config_path = "s3://bedrock-test-bucket/config.json"
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
     data_check = DataCheck(df, spark, config_path, file_name, src_system)

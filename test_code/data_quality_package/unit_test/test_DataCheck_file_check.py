@@ -10,6 +10,7 @@ from ..dq_utility import DataCheck
 # Create SparkSession
 spark = SparkSession.builder.master("local").appName("DataCheckTest").getOrCreate()
 
+
 # Create DataFrame
 @pytest.fixture
 def df():
@@ -90,7 +91,7 @@ def datacheck_instance(df):
             },
         },
     }
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"
+    config_path = "s3://bedrock-test-bucket/config.json"
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
 

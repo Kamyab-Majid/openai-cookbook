@@ -13,10 +13,11 @@ data = [("A",), ("B",), ("C",), ("D",), ("E",)]
 schema = ["input_col"]
 df = spark.createDataFrame(data, schema)
 
+
 # Create DataCheck instance
 @pytest.fixture
 def datacheck_instance():
-    config_path = "s3://config-path-for-chat-gpt-unit-test/config.json"
+    config_path = "s3://bedrock-test-bucket/config.json"
     file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
     src_system = "innomar"
     rule_df = pd.DataFrame(
@@ -35,11 +36,6 @@ def datacheck_instance():
 def test_category_check(datacheck_instance):
     datacheck_instance.category_check("input_col")
     result_df = datacheck_instance.source_df
-    expected_error_msg = (
-        "category_FAIL: Column [input_col] accepted values are (['A', 'B', 'C'])"
-    )
+    expected_error_msg = "category_FAIL: Column [input_col] accepted values are (['A', 'B', 'C'])"
     assert result_df.filter(col("input_col category_check0").isNotNull()).count() == 2
-    assert (
-        result_df.filter(col("input_col category_check0") == expected_error_msg).count()
-        == 2
-    )
+    assert result_df.filter(col("input_col category_check0") == expected_error_msg).count() == 2
