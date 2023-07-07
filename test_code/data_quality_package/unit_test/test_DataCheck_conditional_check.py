@@ -1,44 +1,27 @@
-import json
-import pandas as pd
-import pytest
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as f
-from pyspark.sql.types import StringType, DateType, IntegerType, FloatType, DoubleType
-from ..dq_utility import DataCheck
+from data_quality_package.dq_utility import DataCheck
 
-
-# Create SparkSession
-spark = SparkSession.builder.master("local").appName("DataCheckTest").getOrCreate()
-
-# Create DataFrame
-df = spark.read.parquet("data/test_data.parquet")
-
-
-# Create DataCheck instance
-@pytest.fixture
-def datacheck_instance():
-    config_path = "s3://bedrock-test-bucket/config.json"
-    file_name = "FSN001 - Fasenra (AstraZeneca) Detailed Reports"
-    src_system = "innomar"
-    data_check = DataCheck(df, spark, config_path, file_name, src_system)
-    return data_check
-
-
-# Test conditional_check function
 def test_conditional_check(datacheck_instance):
-    input_col = "Patient Number"
-    datacheck_instance.conditional_check(input_col)
+    # Test when the condition columns are in the dataframe 
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_columns"] = "Age, Gender"
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_column_value"] = ">=18, Male"
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_valuelist"] = ""
+    datacheck_instance.conditional_check("Patient Number")
+    assert "Patient Number conditional_check1" in datacheck_instance.error_columns
 
-    # Check if the error column is added to the source DataFrame
-    assert f"{input_col} conditional_check0" in datacheck_instance.source_df.columns
+    # Test when one of the condition columns is missing 
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_columns"] = "Age, NotExists"
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_column_value"] = ">=18, __NOT__NULL__"
+    datacheck_instance.conditional_check("Patient Number")
+    assert datacheck_instance.sns_message == ['Column NotExists is not in report FSN001 - Fasenra (AstraZeneca) Detailed Reports while it is needed for conditional check']
 
-    # Check if the error column is added to the error_columns list
-    assert f.col(f"{input_col} conditional_check0") in datacheck_instance.error_columns
+    # Test when the condition values are float
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_columns"] = "Age, Weight"
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_column_value"] = ">=18, 100"
+    datacheck_instance.conditional_check("Patient Number")
+    assert "Patient Number conditional_check2" in datacheck_instance.error_columns
 
-    # Check if the error counter is incremented
-    assert datacheck_instance.error_counter == 1
-
-    # Check if the error message is added to the sns_message list
-    condition_column = "Current Patient Status"
-    expected_error_msg = f"Column {condition_column} is not in report {datacheck_instance.file_name} while it is needed for conditional check"
-    assert expected_error_msg in datacheck_instance.sns_message
+    # Test when the condition values contains NOT 
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_columns"] =  "Gender"
+    datacheck_instance.rule_df.loc["Patient Number", "conditional_column_value"] = "__NOT__Male" 
+    datacheck_instance.conditional_check("Patient Number")
+    assert "Patient Number conditional_check3" in datacheck_instance.error_columns

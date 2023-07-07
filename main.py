@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple, Union
-from matplotlib.font_manager import json_dump  # type: ignore
+# from matplotlib.font_manager import json_dump  # type: ignore
 import inspect
 # import openai  # used for calling the OpenAI API
 import yaml
@@ -45,6 +45,35 @@ class CodeToolbox:
         """
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
+        self.config['doc_example']= """ ```python\
+        def sum(a,b):
+            if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+                raise TypeError("Both parameters must be numeric values.")
+            return a+b
+        ```
+        this is a proper response:
+        ```python
+        from typing import Union
+        def sum(a: Union[int, float], b: Union[int, float]) -> Union[int, float]:
+            \"\"\"
+            Returns the sum of two numbers.
+            Args:
+                a (int or float): The first number.
+                b (int or float): The second number.
+            Returns:
+                int or float: The sum of `a` and `b`.
+            Raises:
+                TypeError: If `a` or `b` is not a numeric value.
+            Examples:
+                >>> sum(2, 3)
+                5
+                >>> sum(4.5, 2.5)
+                7.0
+            \"\"\"
+            if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+                raise TypeError("Both parameters must be numeric values.")
+            return a + b'
+        """
         self.language = "python"
         
         # session = boto3.Session(profile_name='sandbox')
@@ -278,7 +307,7 @@ class CodeToolbox:
 
         if match:
             index = match.start()
-            print(f"Found at index: {index}")
+            # print(f"Found at index: {index}")
         else:
             print("Not found")
         next_newline_index = func_str.find('\n', index)

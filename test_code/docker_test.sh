@@ -11,4 +11,4 @@ docker run -it \
     -e DISABLE_SSL=true \
     --rm -p 4041:4041 -p 18080:18080 \
     --name glue_pytest amazon/aws-glue-libs:glue_libs_3.0.0_image_01 \
-    -c "python3 -m pytest --tb=line -rw $1"
+    -c "python3 -m pytest"

@@ -165,7 +165,7 @@ def import_all_modules(
             continue
         filepath = os.path.join(directory, current_file)
         if current_file == 'unit_test':
-            print('hi')
+            pass
         if current_file.startswith(".") or filepath in ignore_directories:
             continue
 

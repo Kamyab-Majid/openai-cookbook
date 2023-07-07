@@ -33,17 +33,6 @@ class DataCheck:
         file_name: str,
         src_system: str,
     ) -> None:
-        """
-        Initializes the DataCheck class.
-        
-            Args:
-                source_df (DataFrame): The source DataFrame to check.
-                spark_context (SparkSession): The Spark session.
-                config_path (str): The path to the config file.
-                file_name (str): The file name.
-                src_system (str): The source system.
-        """
-
         self.spark = spark_context
         self.source_df = source_df
         self.error_df = None
@@ -143,6 +132,7 @@ class DataCheck:
     def add_error_col(
         self, error_msg: str, condition: Optional[Column], error_col_name: str
     ) -> None:
+
         if condition is not None and error_col_name and error_msg:
             col_condition = when(condition, lit(error_msg)).otherwise(lit(None))
             error_col_name += str(self.error_counter)
