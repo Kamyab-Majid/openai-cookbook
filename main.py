@@ -231,6 +231,14 @@ class CodeToolbox:
             function_name = obj_key
             self.delete_unit_test_file_for_each_function(class_name, function_name)
 
+    def extract_text_between_triple_quotes(string):
+        pattern = r'"""([\s\S]*?)"""'
+        match = re.search(pattern, string)
+        if match:
+            extracted_text = match.group(1)
+            return extracted_text
+        else:
+            return None
     def documenter(self, func_str: str, class_name: str = None) -> None:
         """
         Adds Sphinx docstring documentation and type hints to a given function or method in the CodeToolbox class.
@@ -239,23 +247,36 @@ class CodeToolbox:
             func_str (str): The function or method signature to be documented.
             class_name (str): if it is a method in a class, give the class name.
         """
+        if "\"\"\"" in func_str:
+            return
         doc_prompt = f"you are providing documentation and typing (type hints) of \
             code to be used in {self.config['doc_package']},\
             provide the typing imports in different code snippet, as an example for this request\
         {self.config['doc_example']}"
         class_part = f"in{self.class_name}class" if class_name else ""
         self.doc_messages = [
-            {"role": "system", "content": doc_prompt},
             {
                 "role": "user",
-                "content": f"provide {self.config['doc_package']} docstring documentation and typehints for {func_str} {class_part},\
+                "content": f"provide {self.config['doc_package']} docstring in google format for {func_str} {class_part},\
                 do not provide any other imports that are not used in typing and do not provide multiple options, just one code,\
-                if it is a method in a class, do not provide any other code but the method itself and imports",
+                if it is a method in a class, do not provide any other code but the docstring.",
             },
         ]
-        doc_code, self.doc_messages = self.chat_gpt_wrapper(input_messages=self.doc_messages)
-
+        doc_code, self.doc_messages = self.bedrock_wrapper(input_messages=self.doc_messages)
         # Open the file in read mode and read its content
+        # Find the first occurrence of ) followed by any characters (except newline) and :
+        docstring = self.extract_text_between_triple_quotes(doc_code)
+        
+        match = re.search(r'\)(?:(?!\n).)*:', func_str)
+
+        if match:
+            index = match.start()
+            print(f"Found at index: {index}")
+        else:
+            print("Not found")
+        next_newline_index = func_str.find('\n', index)
+        number_of_space = len(func_str) - len(func_str.lstrip()) + 4
+        func_with_doc = func_str[:next_newline_index] +'\n'+number_of_space*' '+"\"\"\""+'\n'+number_of_space*' '  +docstring.replace('\n',f"\n{number_of_space*' '}").rstrip() +'\n'+number_of_space*' '+"\"\"\""+'\n'+ func_str[next_newline_index:]
         with open(self.file_path, "r") as file:
             file_content = file.read()
         import_pattern = r"(?m)^((?:from|import)\s+.+)$"
@@ -269,7 +290,7 @@ class CodeToolbox:
             doc_code = "\n".join(doc_code.split("\n")[1:]) + "\n"
         else:
             doc_code = "    " + doc_code.replace("\n", "\n    ") + "\n"
-        new_content = file_content.replace(func_str, doc_code)
+        new_content = file_content.replace(func_str, func_with_doc)
         all_imports = re.findall(import_pattern, new_content)
         for import_str in import_matches:
             if import_str not in all_imports:
